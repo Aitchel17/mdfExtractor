@@ -2,7 +2,7 @@ function [analog, info] = mdf_readanalog(mobj)
     info.analogfreq    = mobj.ReadParameter('Analog Acquisition Frequency (Hz)');
     info.analogcount   = str2double(mobj.ReadParameter('Analog Sample Count'));
     info.analogresolution   = mobj.ReadParameter('Analog Resolution');
-
+    analog = struct();
     for analog_ch = string(0:1:7)
         field_name = mobj.ReadParameter(sprintf('Analog Ch %s Name',analog_ch));
 
