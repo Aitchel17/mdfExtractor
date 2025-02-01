@@ -30,8 +30,7 @@ function [zstack,interp_drifttable] = pre_applymotion(zstack, drift_table)
         col_shift = round(col_shifts_interp(i));
 
         % Shift the frame using 'OutputView' set to 'full' to capture padding
-         zstack(:, :, i) = imtranslate(frame, [col_shift, row_shift], 'FillValues', 0);
-
+         zstack(:, :, i) = imtranslate(frame, [col_shift, row_shift], 'FillValues', -2048);
     end
     toc;
     zstack = zstack(1+max_col:end+min_col,1+max_row:end+min_row,:);
