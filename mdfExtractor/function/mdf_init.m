@@ -32,6 +32,7 @@ function [info, mobj] = mdf_init(path,mdfname)
     % General Info
     info.User = mobj.ReadParameter('Created by');
     info.Date = mobj.ReadParameter('Created on');
+    info.Comments = mobj.ReadParameter('Comments');
     
     % two photon scanning microscope info
     info.scanmode      = mobj.ReadParameter('Scan Mode');
