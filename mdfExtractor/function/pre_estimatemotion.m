@@ -4,7 +4,8 @@ function [pixelShift_table] = pre_estimatemotion(stack,reference_img,Vertices)
 
     % Extract the selected region from the stack
     stack = stack(xy(1,2):xy(3,2), xy(1,1):xy(3,1), :);
-    
+    % non negative
+    stack = stack - min(stack,[],'all');
     % Display the selected region in a slice viewer
     figure(5);
     sliceViewer(stack);
