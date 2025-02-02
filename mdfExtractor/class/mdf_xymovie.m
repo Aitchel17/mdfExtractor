@@ -12,6 +12,9 @@ classdef mdf_xymovie < mdf
             obj@mdf();
             [obj.analog.data, obj.analog.info] = mdf_readanalog(obj.mobj);
             obj.state.groupz = 10;
+            obj.state.xpadstart = 1;
+            obj.state.xpadend = obj.info.fwidth;
+            obj.state.xshift = 0;
         end
                 
         function state = updatestate(obj,parameters)
