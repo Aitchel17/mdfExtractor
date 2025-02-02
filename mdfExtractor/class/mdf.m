@@ -47,9 +47,6 @@ classdef mdf
                     % xshift correction
                     disp('Pixel shift correction')
                     zstack = mdf_pshiftcorrection(zstack,obj.state.xshift);
-                    % non negative
-                    disp('min subtraction for non negative array')
-                    zstack = zstack - min(zstack,[],'all');
         end
 
         function logic = showstack(obj)
