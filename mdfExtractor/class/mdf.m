@@ -47,6 +47,7 @@ classdef mdf
                     % xshift correction
                     disp('Pixel shift correction')
                     zstack = mdf_pshiftcorrection(zstack,obj.state.xshift);
+                    zstack(zstack<0) = 0; % Thresholding negative values to be 0 (as inverted PMT output and what mSCAN shows is positive value.)
         end
 
         function logic = showstack(obj)
