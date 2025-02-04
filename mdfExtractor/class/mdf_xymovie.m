@@ -147,6 +147,7 @@ classdef mdf_xymovie < mdf
     methods (Access=protected, Static)
         function [state, demo] = staticdemo(demo,state)
             [state.xpadstart,state.xpadend] = pre_findpadding(demo.stack); % 1
+            demo.stack(demo.stack<0) = 0;
             state.xshift = mdf_pshiftexplorer(demo.stack); % 2.1
             demo.stack = mdf_pshiftcorrection(demo.stack,state.xshift); % 2.2
             demo.stack = pre_groupaverage(demo.stack(:,state.xpadstart:state.xpadend,:), state.groupz); % 3
@@ -154,7 +155,7 @@ classdef mdf_xymovie < mdf
             % 5
             qualitycontrol = false;
             while qualitycontrol == false
-                [state.motionvertices, state.refframe] = roi_rectangle_polygon(demo.stack,'rectangle');
+                [state.motionvertices, state.refframe] = mdf_rectangle_polygon(demo.stack,'rectangle');
                 state.refimg = demo.stack(:,:,state.refframe);
                 demo.drift_table = pre_estimatemotion(demo.stack,state.refimg,state.motionvertices);
                 [demo.correctedstack, demo.ip_Drifttable] = pre_applymotion(demo.stack,demo.drift_table);
