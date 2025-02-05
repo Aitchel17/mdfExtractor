@@ -1,5 +1,7 @@
-
-
+% Change groupz if you are using galvo which already scan slowly and does
+% not require group averazing
+% remove channel 2 processing or change .demo() function first argument to
+% the other argument.
 
 file1 = mdf_xymovie();
 file1.state = file1.demo(1,groupz=10); % state for image correction generated at here, reference channel and ch2read set with first argument
