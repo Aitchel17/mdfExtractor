@@ -1,4 +1,4 @@
-classdef mdf_linescan
+classdef mdf_linescan < mdf
     %MDF_LINESCAN Summary of this class goes here
     %   Detailed explanation goes here
     
