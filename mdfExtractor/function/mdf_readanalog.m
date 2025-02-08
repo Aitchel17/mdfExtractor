@@ -5,6 +5,7 @@ function [analog, info] = mdf_readanalog(mobj)
     analog = struct();
     for analog_ch = string(0:1:7)
         field_name = mobj.ReadParameter(sprintf('Analog Ch %s Name',analog_ch));
+        field_name(field_name ==' ') = '_';
 
         if strcmp(field_name,"")
             fprintf('\nAnalog Ch %s not detected',analog_ch);
