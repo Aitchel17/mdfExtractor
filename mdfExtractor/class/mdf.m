@@ -69,9 +69,27 @@ classdef mdf
 
         function saveinfo(obj)
             disp('save info')
-            io_saveinfo(obj.info,obj.state.save_folder);
+            saveinfo = obj.info;
+            saveinfo.savedate = string(datetime('now', 'Format', 'yyyy-MM-dd HH:mm:ss'));
+            infoFields = fieldnames(saveinfo);
+            infoValues = struct2cell(saveinfo);
+            table_info = table(infoFields, infoValues, 'VariableNames', {'Field', 'Value'});
+        
+            % Construct full file path
+            save_infopath = fullfile(obj.state.save_folder, [saveinfo.mdfName(1:end-4),'_info.txt']);
+            % Write the table to an Excel file (overwrite the file initially)
+            writetable(table_info, save_infopath);
         end
-           
+    end
+
+    methods (Access=protected, Static)
+        function [start_x,end_x] = pre_findpadding(frames)
+            %% find padding caused by sinusoidal correction
+            mean_x = mean(frames,[1,3]); % calculate mean value of y, z axis (y,x,z)
+            tmp.nzloc = find(mean_x~=-2048); % find location of value not -2048
+            start_x = tmp.nzloc(1); % start point of non zero
+            end_x = tmp.nzloc(end); % end point of non zero
+        end
     end
 end
 
