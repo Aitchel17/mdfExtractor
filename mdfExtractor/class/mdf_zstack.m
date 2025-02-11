@@ -7,10 +7,8 @@ classdef mdf_zstack < mdf
     end
     
     methods
-        function obj = mdf_zstack(inputArg1,inputArg2)
-            %UNTITLED Construct an instance of this class
-            %   Detailed explanation goes here
-            obj.Property1 = inputArg1 + inputArg2;
+        function obj = mdf_zstack()
+            obj@mdf();
         end
         
         function outputArg = method1(obj,inputArg)
