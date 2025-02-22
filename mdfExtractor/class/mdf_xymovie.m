@@ -107,7 +107,7 @@ classdef mdf_xymovie < mdf
             state.groupz = option.groupz;
             demo.fend = round((obj.info.fcount - state.loadstart)/20);
             demo.stack = mdf_readframes(obj.mobj,state.refchannel,[state.loadstart, demo.fend]); % 0
-            [state, demo] = obj.staticdemo(demo,state);
+            [state, demo] = mdf_xymovie.staticdemo(demo,state);
         end
 
         function estimated_drifttable = getdrifttable(obj)
@@ -139,14 +139,48 @@ classdef mdf_xymovie < mdf
         end
 
         function saveanalog(obj)
-            save_path = fullfile(obj.state.save_folder, [obj.info.mdfName(1:end-4),'_analog.txt']);
-            io_saveanalog(obj.analog.data,obj.analog.info,save_path)
+            filename = fullfile(obj.state.save_folder, [obj.info.mdfName(1:end-4),'_analog.txt']);
+            analogdata = obj.analog.data;
+            analoginfo = obj.analog.info;
+            fileID = fopen(filename, 'w');
+            
+            % Header start
+            fprintf(fileID, '--- Analog Info ---\n');
+            % Write the struct fields and their values
+            fieldNames = fieldnames(analoginfo); % Get the field names
+            for i = 1:numel(fieldNames)
+                fieldName = fieldNames{i};
+                fieldValue = analoginfo.(fieldName);
+                % Convert arrays/matrices to a string for writing
+                if isnumeric(fieldValue)
+                    fieldValueStr = mat2str(fieldValue); % Converts numbers to string
+                elseif ischar(fieldValue)
+                    fieldValueStr = fieldValue; % Keep strings as-is
+                end
+                % Write the field name and value to the file
+                fprintf(fileID, '%s: %s\n', fieldName, fieldValueStr);
+            end
+            % end of header
+             fprintf(fileID, '\n--- Analog Data ---\n');
+            % Write the data row by row (field names as row names)
+            channelNames = fieldnames(analogdata); % Field names are row names
+            for i = 1:numel(channelNames)
+                rowName = channelNames{i}; % Get the row name (field name)
+                rowData = analogdata.(rowName); % Get the corresponding data
+                rowData = mat2str(rowData); % Convert to a string
+                % Write the row name and its data
+                fprintf(fileID, '%s: %s\n', rowName, rowData);
+            end
+            % Close the file
+            fclose(fileID);
         end
+
+
     end
     
     methods (Access=protected, Static)
         function [state, demo] = staticdemo(demo,state)
-            [state.xpadstart,state.xpadend] = pre_findpadding(demo.stack); % 1
+            [state.xpadstart,state.xpadend] = mdf.findpadding(demo.stack); % 1
             demo.stack(demo.stack<0) = 0;
             state.xshift = mdf_pshiftexplorer(demo.stack); % 2.1
             demo.stack = mdf_pshiftcorrection(demo.stack,state.xshift); % 2.2
