@@ -75,7 +75,7 @@ classdef mdf_xy_mutiplane < mdf_xymovie
             state.groupz = option.groupz;
             demo.fend = round((obj.info.fcount - state.loadstart)/20);
             demo.stack = mdf_readframes(obj.mobj,state.refchannel,[state.loadstart, demo.fend],state.num_plane,state.plane2read); % 0
-            [state, demo] = obj.staticdemo(demo,state);
+            [state, demo] = mdf_xymovie.staticdemo(demo,state);
         end
 
         function zstack = loadframes(obj)
