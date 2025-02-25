@@ -28,12 +28,12 @@ function [pixelShift_table] = pre_estimatemotion(stack,reference_img,Vertices)
     % Display the X and Y shifts
     figure('name', 'Pixel Shift', 'NumberTitle', 'off');
     subplot(2, 1, 1);
-    xshift = medfilt1(pixelShift_table(4,:), 100);  % Apply median filter to smooth x-shifts
+    xshift = pixelShift_table(4,:);  % Apply median filter to smooth x-shifts
     plot(xshift);
     title('X shift');
     
     subplot(2, 1, 2);
-    yshift = medfilt1(pixelShift_table(3,:), 100);  % Apply median filter to smooth y-shifts
+    yshift = pixelShift_table(3,:);  % Apply median filter to smooth y-shifts
     plot(yshift);
     title('Y shift');
 end
