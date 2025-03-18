@@ -10,7 +10,7 @@ classdef mdfExtractLoader
     end
     
     methods
-        function obj = mdfExtractLoader(savepath)
+        function obj = mdfExtractLoader()
 
         info = struct();
         info.analyzefolder = uigetdir;
@@ -24,7 +24,6 @@ classdef mdfExtractLoader
         end
         
         obj.info = info;
-        obj.info.analysis_savepath = savepath;
 
         end
         % function analog = loadanalog(obj)
@@ -44,11 +43,11 @@ classdef mdfExtractLoader
         end
     
         function analog = loadanalog(obj)
-            analogname = dir(fullfile(obj.info.analyzefolder,'*_analog.txt')).name;
-            filename = fullfile(obj.info.analyzefolder,analogname);
+            analogfname = dir(fullfile(obj.info.analyzefolder,'*_analog.txt')).name;
+            filename = fullfile(obj.info.analyzefolder,analogfname);
             % Open the file
-            fid = fopen(filename, 'r');
-            if fid == -1
+            fileid = fopen(filename, 'r');
+            if fileid == -1
                 error('Could not open the file.');
             end
         
@@ -59,8 +58,8 @@ classdef mdfExtractLoader
             
             % Read header information
             section = 'header'; % Track which section we are in
-            while ~feof(fid)
-                line = strtrim(fgetl(fid)); % Read line and trim whitespace
+            while ~feof(fileid)
+                line = strtrim(fgetl(fileid)); % Read line and trim whitespace
                 
                 % Check for section headers
                 if contains(line, '--- Analog Info')
@@ -93,7 +92,62 @@ classdef mdfExtractLoader
             end
         
             % Close the file
-            fclose(fid);
+            fclose(fileid);
+        end
+
+        function motion = loadmotion(obj)
+            
+            motionfname = dir(fullfile(obj.info.analyzefolder,'*_motion.txt')).name;
+            filename = fullfile(obj.info.analyzefolder,motionfname);
+
+            % Open the file
+            fileid = fopen(filename, 'r');
+            if fileid == -1
+                error('Could not open the file.');
+            end
+        
+            % Initialize output structs
+            motion = struct();
+            motion.fps = struct();
+            motion.data = struct();
+
+            % Read header information
+            section = 'header'; % Track which section we are in
+            while ~feof(fileid)
+                line = strtrim(fgetl(fileid)); % Read line and trim whitespace
+                
+                % Check for section headers
+                if contains(line, '--- Motion info')
+                    section = 'header';
+                    continue;
+                elseif contains(line, '--- Motion table')
+                    section = 'data';
+                    continue;
+                end
+        
+                % Process header info
+                if strcmp(section, 'header') && contains(line, ':')
+                    tokens = split(line, ':'); % Split by colon
+                    key = strtrim(tokens{1}); 
+                    value = strtrim(tokens{2});
+                    % Store in info struct
+                    motion.info.(key) = value;
+                end
+        
+                % Process data section
+                if strcmp(section, 'data') && contains(line, ':')
+                    tokens = split(line, ':'); % Split by colon
+                    key = strtrim(tokens{1}); 
+                    value = strtrim(tokens{2});
+                    % Convert to numeric array
+                    value = str2num(value); %#ok<ST2NM> 
+                    % Store in analog data struct
+                    motion.data.(key) = value;
+                end
+            end
+        
+            % Close the file
+            fclose(fileid);
         end
     end
     methods (Access=private,Static)

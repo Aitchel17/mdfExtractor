@@ -8,7 +8,8 @@ classdef mdf
         mobj % auto
         state = struct( ...
             'loadstart', 1,...
-            'ch2read',  1);
+            'ch2read',  1 ...
+            );
     end
     
     methods
@@ -22,6 +23,7 @@ classdef mdf
             [obj.info, obj.mobj] = mdf_init();
             %   Default img frame reading parameter from beginning to end
             obj.state.loadend = obj.info.fcount;
+            %   Default saving folder path
             obj.state.save_folder = fullfile(obj.info.mdfPath, obj.info.mdfName(1:end-4));
             if ~option.objective
                 obj.info.objname = '<Unknown Objective>';
@@ -37,6 +39,9 @@ classdef mdf
             if ~exist(obj.state.save_folder, 'dir')
                 mkdir(obj.state.save_folder);
             end
+            obj.state.xpadstart = 1;
+            obj.state.xpadend = obj.info.fwidth;
+            obj.state.xshift = 0;
         end
         
        

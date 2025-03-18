@@ -15,6 +15,8 @@ classdef mdf_xymovie < mdf
             obj.state.xpadstart = 1;
             obj.state.xpadend = obj.info.fwidth;
             obj.state.xshift = 0;
+            analogfilename = fullfile(obj.state.save_folder, [obj.info.mdfName(1:end-4),'_analog.txt']);
+            mdf_xymovie.saveanalog(obj.analog,analogfilename)
         end
                 
         function state = updatestate(obj,parameters)
@@ -119,10 +121,13 @@ classdef mdf_xymovie < mdf
                 disp('3D median filtering')
                 zstack = medfilt3(zstack,[3,3,5]); % denoise by 3d median filter
                 estimated_drifttable = pre_estimatemotion(zstack,obj.state.refimg,obj.state.motionvertices);
+                driftfilename = fullfile(obj.state.save_folder, [obj.info.mdfName(1:end-4),'_motion.txt']);
+                mdf_xymovie.savemotion(estimated_drifttable,obj.info.fps/obj.state.groupz,driftfilename)
         end
 
         function [zstack, applied_drifttable] = correctdrift(obj)
             [zstack, applied_drifttable] = pre_applymotion(obj.stack,obj.drifttable);
+
         end
 
         function zstack = afterprocess(obj,option)
@@ -138,10 +143,33 @@ classdef mdf_xymovie < mdf
             end
         end
 
-        function saveanalog(obj)
-            filename = fullfile(obj.state.save_folder, [obj.info.mdfName(1:end-4),'_analog.txt']);
-            analogdata = obj.analog.data;
-            analoginfo = obj.analog.info;
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    end % end of method
+    
+    methods (Access=protected, Static)
+        function [state, demo] = staticdemo(demo,state)
+            [state.xpadstart,state.xpadend] = mdf.findpadding(demo.stack); % 1
+            demo.stack(demo.stack<0) = 0;
+            state.xshift = mdf_pshiftexplorer(demo.stack); % 2.1
+            demo.stack = mdf_pshiftcorrection(demo.stack,state.xshift); % 2.2
+            demo.stack = pre_groupaverage(demo.stack(:,state.xpadstart:state.xpadend,:), state.groupz); % 3
+            demo.stack = medfilt3(demo.stack,[3,3,5]); % 4
+            % 5
+            qualitycontrol = false;
+            while qualitycontrol == false
+                [state.motionvertices, state.refframe] = mdf_rectangle_polygon(demo.stack,'rectangle');
+                state.refimg = demo.stack(:,:,state.refframe);
+                demo.drift_table = pre_estimatemotion(demo.stack,state.refimg,state.motionvertices);
+                [demo.correctedstack, demo.ip_Drifttable] = pre_applymotion(demo.stack,demo.drift_table);
+                qualitycontrol = util_checkstack(demo.correctedstack);
+            end
+        end
+
+
+        function saveanalog(analog, filename)
+            analogdata = analog.data;
+            analoginfo = analog.info;
             fileID = fopen(filename, 'w');
             
             % Header start
@@ -175,27 +203,23 @@ classdef mdf_xymovie < mdf
             fclose(fileID);
         end
 
+        function savemotion(motiontable,motionfps,filename)
+            yerror = mat2str(motiontable(1,:));
+            xerror = mat2str(motiontable(2,:));
+            ymotion = mat2str(motiontable(3,:));
+            xmotion = mat2str(motiontable(4,:));
 
-    end
-    
-    methods (Access=protected, Static)
-        function [state, demo] = staticdemo(demo,state)
-            [state.xpadstart,state.xpadend] = mdf.findpadding(demo.stack); % 1
-            demo.stack(demo.stack<0) = 0;
-            state.xshift = mdf_pshiftexplorer(demo.stack); % 2.1
-            demo.stack = mdf_pshiftcorrection(demo.stack,state.xshift); % 2.2
-            demo.stack = pre_groupaverage(demo.stack(:,state.xpadstart:state.xpadend,:), state.groupz); % 3
-            demo.stack = medfilt3(demo.stack,[3,3,5]); % 4
-            % 5
-            qualitycontrol = false;
-            while qualitycontrol == false
-                [state.motionvertices, state.refframe] = mdf_rectangle_polygon(demo.stack,'rectangle');
-                state.refimg = demo.stack(:,:,state.refframe);
-                demo.drift_table = pre_estimatemotion(demo.stack,state.refimg,state.motionvertices);
-                [demo.correctedstack, demo.ip_Drifttable] = pre_applymotion(demo.stack,demo.drift_table);
-                qualitycontrol = util_checkstack(demo.correctedstack);
-            end
+            fileID = fopen(filename,'w');
+            fprintf(fileID, '--- Motion info ---\n');
+            fprintf(fileID, 'driftestimation_fps: %s\n', num2str(motionfps));
+            fprintf(fileID, '--- Motion table ---\n');
+            fprintf(fileID, '%s: %s\n', 'yerror', yerror);
+            fprintf(fileID, '%s: %s\n', 'xerror', xerror);
+            fprintf(fileID, '%s: %s\n', 'ymotion', ymotion);
+            fprintf(fileID, '%s: %s\n', 'xmotion', xmotion);
+            fclose(fileID);
+
         end
-    end
+    end % end of method
 end
 
