@@ -42,6 +42,7 @@ classdef mdf
             obj.state.xpadstart = 1;
             obj.state.xpadend = obj.info.fwidth;
             obj.state.xshift = 0;
+            obj.state.groupz = 1;
         end
         
        
@@ -61,7 +62,12 @@ classdef mdf
 
         function info = savetiff(obj)
             info = obj.info;
-            info.savefps = info.fps/obj.state.groupz; 
+            info.savefps = info.fps/obj.state.groupz;
+            %%
+            if strcmp(obj.info.scanmode,'Image Stack')
+            info.savefps = str2double(obj.info.zinter(1:end-2));
+            end
+
             if isa(info.objpix,'double')
                 save_resolution = [info.objpix,info.objpix,1 / info.savefps]; % [x,y,z resolution um, sec]
             else
