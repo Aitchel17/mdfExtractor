@@ -1,13 +1,20 @@
-nfiles = 8; % Specify the number of files
+nfiles = 1; % Specify the number of files
 files = cell(1, nfiles); % Preallocate cell array to hold file objects
 
 for i = 1:nfiles
     % Create and initialize file object
     files{i} = mdf_xymovie();
-    files{i}.state = files{i}.demo(2, 'groupz', 10); % Initial state
+    files{i}.state = files{i}.demo(1, 'groupz', 10); % Initial state
+    files{i} = files{i}.loadbehavior();
 end
+%% 
+i =3;
+    files{i} = mdf_xymovie();
+    files{i}.state = files{i}.demo(2, 'groupz', 10); % Initial state
+    files{i} = files{i}.loadbehavior();
+
 %%
-for i = 2:nfiles
+for i = 1:nfiles
     disp(i)
     files{i}.state = files{i}.updatestate("loadstart", 5); % Update state
 
@@ -22,7 +29,7 @@ for i = 2:nfiles
     files{i}.stack = []; % Clear memory
 
     % Channel 2 Processing
-    files{i}.state = files{i}.updatestate('ch2read', 1); % Update state for channel 2
+    files{i}.state = files{i}.updatestate('ch2read', 2); % Update state for channel 2
     files{i}.stack = files{i}.loadframes();
     files{i}.stack = files{i}.correctdrift(); % Use drift table from channel 1
     files{i}.stack = files{i}.afterprocess(); % After process
@@ -32,4 +39,6 @@ for i = 2:nfiles
     % Save information and analog data
     files{i}.info = files{i}.state2info(); % Bring state information to info
     files{i}.saveinfo(); % Save info
+    files{i}.savebehavior();
 end
+

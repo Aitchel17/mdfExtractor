@@ -6,12 +6,11 @@ classdef mdfExtractLoader
         analog
         stackch1
         stackch2
-        roi
     end
-    
+
+   
     methods
         function obj = mdfExtractLoader()
-
         info = struct();
         info.analyzefolder = uigetdir;
         info.infoname = dir(fullfile(info.analyzefolder, '*_info.txt'));
@@ -20,16 +19,13 @@ classdef mdfExtractLoader
         tmp.info_table = readtable(tmp.infopath);
         
         for i = 1:height(tmp.info_table)
-            info.(tmp.info_table.Field{i}) = tmp.info_table.Value{i}; % Add the field and value to the struct
+            info.(tmp.info_table.Field{i}) = tmp.info_table.Value{i}; 
         end
-        
         obj.info = info;
-
         end
         % function analog = loadanalog(obj)
         % 
         % end
-
 
         function stack = loadstack(obj, channel)
             arguments
@@ -180,7 +176,6 @@ classdef mdfExtractLoader
                     session_start_idx = session_boundary_idx(session_id)+1;
                     session_end_idx = session_boundary_idx(session_id+1)-1;
                 end
-                disp([session_start_idx,session_end_idx])
                 session_frequency = [session_frequency,1/mean(stim_on_int(session_start_idx:session_end_idx))];
                 session_duty = [session_duty,mean(stim_duty(session_start_idx:session_end_idx))];
             end
@@ -191,61 +186,103 @@ classdef mdfExtractLoader
 
 
     methods (Access=private,Static)
-        function channelData = analyze_readtiff(folderdirectory,namingpattern)
+           function channelData = analyze_readtiff(folderdirectory, namingpattern)
             tic
-            % find .tif file
-                channelDir = dir(fullfile(folderdirectory, namingpattern));
-                if length(channelDir) ~= 1
-                    fprintf('%s file not exist or plural num: %d\n', namingpattern, length(channelDir));
-                    channelData = [];
-                    return;
+            channelDir = dir(fullfile(folderdirectory, namingpattern));
+            if length(channelDir) ~= 1
+                fprintf('%s file not exist or plural num: %d\n', namingpattern, length(channelDir));
+                channelData = [];
+                return;
+            end
+            
+            filePath = fullfile(folderdirectory, channelDir.name);
+            info = imfinfo(filePath);
+            numFrames = numel(info);
+        
+            switch info(1).BitDepth
+                case 16, dataClass = 'uint16';
+                case 8, dataClass = 'uint8';
+                otherwise, error('Unsupported BitDepth: %d', info(1).BitDepth);
+            end
+            
+            % Preallocate data
+            channelData = zeros(info(1).Height, info(1).Width, numFrames, dataClass);
+        
+            % Open file once
+            tiffObj = Tiff(filePath, 'r');
+            cleanup = onCleanup(@() tiffObj.close());
+            
+            h = waitbar(0, sprintf('Loading %s...', namingpattern));
+            
+            for idx = 1:numFrames
+                setDirectory(tiffObj, idx);
+                channelData(:,:,idx) = read(tiffObj);
+                if mod(idx, 50) == 0 || idx == numFrames
+                    waitbar(idx/numFrames, h);
                 end
-               
-                filePath = fullfile(folderdirectory, channelDir.name);
-                
-            % load metadata info    
-                info = imfinfo(filePath);
-                numFrames = numel(info);
+            end
             
-                % Determine data type
-                dataType = info(1).BitDepth;
-                if dataType == 16
-                    dataClass = 'uint16';
-                elseif dataType == 8
-                    dataClass = 'uint8';
-                else
-                    error('Unsupported BitDepth: %d', dataType);
-                end
-            
-            % Loading 
-                % Preallocate the array
-                channelData = zeros(info(1).Height, info(1).Width, numFrames, dataClass);
-            
-                % Progress bar update rule
-                updateInterval = max(1, round(numFrames / 100)); 
-                D = parallel.pool.DataQueue;
-                progress = 0;
-                h = waitbar(0, sprintf('Loading %s...', namingpattern));
-                afterEach(D, @(~) updateWaitbar());
-            
-                % parallel loading
-                parfor idx = 1:numFrames
-                    tempTiff = Tiff(filePath, 'r');
-                    cleanup = onCleanup(@() tempTiff.close());         % object that trigger .close() when it destroied
-                    tempTiff.setDirectory(idx);
-                    channelData(:, :, idx) = tempTiff.read();
-                    if mod(idx, updateInterval) == 0
-                        send(D, idx);
-                    end
-                end
-                close(h);
-            
-                function updateWaitbar()
-                    progress = progress + updateInterval;
-                    waitbar(min(progress / numFrames, 1), h);
-                end
+            close(h);
             toc
         end
+
+
+        % function channelData = analyze_readtiff(folderdirectory,namingpattern)
+        %     tic
+        %     find .tif file
+        %         channelDir = dir(fullfile(folderdirectory, namingpattern));
+        %         if length(channelDir) ~= 1
+        %             fprintf('%s file not exist or plural num: %d\n', namingpattern, length(channelDir));
+        %             channelData = [];
+        %             return;
+        %         end
+        % 
+        %         filePath = fullfile(folderdirectory, channelDir.name);
+        %         channelData = tiffreadVolume(filePath);
+        %         toc
+        %     % load metadata info    
+        %         info = imfinfo(filePath);
+        %         numFrames = numel(info);
+        % 
+        %         % Determine data type
+        %         dataType = info(1).BitDepth;
+        %         if dataType == 16
+        %             dataClass = 'uint16';
+        %         elseif dataType == 8
+        %             dataClass = 'uint8';
+        %         else
+        %             error('Unsupported BitDepth: %d', dataType);
+        %         end
+        % 
+        %     % Loading 
+        %         % Preallocate the array
+        %         channelData = zeros(info(1).Height, info(1).Width, numFrames, dataClass);
+        % 
+        %         % Progress bar update rule
+        %         updateInterval = max(1, round(numFrames / 100)); 
+        %         D = parallel.pool.DataQueue;
+        %         progress = 0;
+        %         h = waitbar(0, sprintf('Loading %s...', namingpattern));
+        %         afterEach(D, @(~) updateWaitbar());
+        % 
+        %         % parallel loading
+        %         parfor idx = 1:numFrames
+        %             tempTiff = Tiff(filePath, 'r');
+        %             cleanup = onCleanup(@() tempTiff.close());         % object that trigger .close() when it destroied
+        %             tempTiff.setDirectory(idx);
+        %             channelData(:, :, idx) = tempTiff.read();
+        %             if mod(idx, updateInterval) == 0
+        %                 send(D, idx);
+        %             end
+        %         end
+        %         close(h);
+        % 
+        %         function updateWaitbar()
+        %             progress = progress + updateInterval;
+        %             waitbar(min(progress / numFrames, 1), h);
+        %         end
+        %     toc
+        % end
     end
 end
 

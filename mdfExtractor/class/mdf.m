@@ -65,7 +65,7 @@ classdef mdf
             info.savefps = info.fps/obj.state.groupz;
             %%
             if strcmp(obj.info.scanmode,'Image Stack')
-            info.savefps = str2double(obj.info.zinter(1:end-2));
+                info.savefps = str2double(obj.info.zinter(1:end-2));
             end
 
             if isa(info.objpix,'double')

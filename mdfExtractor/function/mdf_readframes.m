@@ -77,7 +77,6 @@ function zstack = io_readframes_simple(mobj, imgch, indices)
     % Read each frame sequentially
     for idx = 1:numFrames
         frameIdx = indices(idx);
-
         zstack(:, :, idx) = mobj.ReadFrame(imgch, frameIdx)';
     end
 end

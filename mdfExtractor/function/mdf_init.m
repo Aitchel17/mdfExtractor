@@ -17,15 +17,21 @@ function [info, mobj] = mdf_init(path,mdfname)
     %%
     switch nargin
         case 2
+            info = struct();
             mdfPath = fullfile(path,mdfname);
+            info.mdfName = mdfname;
+            info.mdfPath = path;
+
         case 1
+            info = struct();
             mdfPath = path;
         otherwise
+            info = struct();
            [info.mdfName, info.mdfPath] = uigetfile({'*.mdf'}); % select file by UI
            mdfPath = [info.mdfPath, info.mdfName];
     end
    
-    disp([info.mdfName,'is loaded'])
+    
     mobj = actxserver('MCSX.Data'); % Create Component Object Model (COM)
     mobj.invoke('OpenMCSFile', mdfPath); % Using COM open .mdf file
     
@@ -68,12 +74,14 @@ function [info, mobj] = mdf_init(path,mdfname)
 
 %% Scan mode specific info
     if strcmp(info.scanmode, 'Image Stack')
-        disp('Image stack loaded')
-        info.fave      = mobj.ReadParameter('Average Count');
+        info.fave      = mobj.ReadParameter('Averaging Count');
         info.pinit     = mobj.ReadParameter('Initial Intensity');
         info.pfinl     = mobj.ReadParameter('Final Intensity'); % final intensity activex control has bug the .ocx file should be
         % editted
         info.zinter    = mobj.ReadParameter('Z- interval');
+        info.pcontol   = mobj.ReadParameter('Intensity Control');
+        info.repeat    = mobj.ReadParameter('Stack Repeat Count');
     end
+   disp([info.scanmode,info.mdfName,'is loaded'])
 
 end

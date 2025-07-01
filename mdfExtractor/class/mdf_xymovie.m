@@ -5,6 +5,7 @@ classdef mdf_xymovie < mdf
     properties
         analog
         drifttable
+        behavior
     end
     
     methods
@@ -18,7 +19,41 @@ classdef mdf_xymovie < mdf
             analogfilename = fullfile(obj.state.save_folder, [obj.info.mdfName(1:end-4),'_analog.txt']);
             mdf_xymovie.saveanalog(obj.analog,analogfilename)
         end
-                
+        
+        function obj = loadbehavior(obj)
+                        if strcmp(obj.mobj.ReadParameter('Video Enabled'),'-1')
+                disp('Behavior camera enable = -1 , loading behavior data')
+                obj.behavior = mdf_xymovie.behaviorinfo(obj.mobj);
+                obj.info.behavior_enable = 1;
+            else
+                disp('Behavior camera enable = 0 , check .mdf file')
+                obj.info.behavior_enable = 0;
+                        end
+        end
+
+        function savebehavior(obj)
+            if obj.info.behavior_enable
+                disp('saving behavior')
+                v1 = VideoWriter(fullfile([obj.info.mdfPath,obj.info.mdfName(1:end-4)],"eye.avi"),'Grayscale AVI');
+                v1.FrameRate = 30.9;
+                v2 = VideoWriter(fullfile([obj.info.mdfPath,obj.info.mdfName(1:end-4)],"whisker.avi"),'Grayscale AVI');
+                v2.FrameRate = 30.9;
+                open(v1);
+                open(v2);
+                for idx = 1:str2double(obj.behavior.fcount)
+                    frame = uint8(mod(double(obj.mobj.ReadVideoFrame(idx)'),256));
+                    writeVideo(v1,frame(obj.behavior.eyevertices(1,2):obj.behavior.eyevertices(3,2), obj.behavior.eyevertices(1,1):obj.behavior.eyevertices(3,1)))
+                    writeVideo(v2,frame(obj.behavior.whiskervertices(1,2):obj.behavior.whiskervertices(3,2), obj.behavior.whiskervertices(1,1):obj.behavior.whiskervertices(3,1)))
+                end
+                close(v1);
+                close(v2);
+                disp('behavior data saved')
+            else
+                disp('behavior disabled')
+            end
+        end
+
+
         function state = updatestate(obj,parameters)
             % Change state.loadstart, and state.loadend if necessary
             % Input: sec --> converted to frame using info.fps
@@ -166,6 +201,31 @@ classdef mdf_xymovie < mdf
             end
         end
 
+        function behavior = behaviorinfo(mobj)
+                behavior.fwidth  = mobj.ReadParameter('Video Width');
+                behavior.fheight = mobj.ReadParameter('Video Height');
+                if strcmp(mobj.ReadParameter('Video Mode'),'0')
+                    behavior.videomode = 'mono_8bit';
+                else
+                    behavior.videomode = mobj.ReadParameter('Video Mode');
+                end
+                behavior.fcount = mobj.ReadParameter('Video Image Count');
+                behavior.frate = mobj.ReadParameter('Video Rate');
+                behavior.democount = 2000;
+                sampleFrame = mobj.ReadVideoFrame(1)';
+                [height, width] = size(sampleFrame);
+                demostack = zeros(height,width, behavior.democount);%, 'like', sampleFrame);
+                for idx = 1:behavior.democount
+                    demostack(:,:,idx) = mobj.ReadVideoFrame(idx)';
+                end
+                demostack = mod(demostack,256);
+                disp('select eye vertices')
+                [behavior.eyevertices, ~] = mdf_rectangle_polygon(demostack,'rectangle');
+                disp('select whisker and nose vertices')
+                [behavior.whiskervertices, ~] = mdf_rectangle_polygon(demostack,'rectangle');
+                figure("Name",'behavior demo')
+                sliceViewer(demostack)
+        end
 
         function saveanalog(analog, filename)
             analogdata = analog.data;
