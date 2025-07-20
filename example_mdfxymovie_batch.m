@@ -1,21 +1,18 @@
-nfiles = 1; % Specify the number of files
+clc,clear
+nfiles = 5; % Specify the number of files
 files = cell(1, nfiles); % Preallocate cell array to hold file objects
-
+%%
 for i = 1:nfiles
     % Create and initialize file object
     files{i} = mdf_xymovie();
-    files{i}.state = files{i}.demo(1, 'groupz', 10); % Initial state
+    files{i}.state = files{i}.demo(1, 'groupz', 5); % Initial state
     files{i} = files{i}.loadbehavior();
 end
-%% 
-i =3;
-    files{i} = mdf_xymovie();
-    files{i}.state = files{i}.demo(2, 'groupz', 10); % Initial state
-    files{i} = files{i}.loadbehavior();
 
 %%
-for i = 1:nfiles
+for i = 1:7
     disp(i)
+    files{i}.state = files{i}.updatestate("loadstart", 5); % Update state
     files{i}.state = files{i}.updatestate("loadstart", 5); % Update state
 
     % Channel 1 Processing
