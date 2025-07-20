@@ -2,7 +2,7 @@ clc,clear
 nfiles = 5; % Specify the number of files
 files = cell(1, nfiles); % Preallocate cell array to hold file objects
 %%
-for i = 1:nfiles
+for i = 2:nfiles
     % Create and initialize file object
     files{i} = mdf_xymovie();
     files{i}.state = files{i}.demo(1, 'groupz', 5); % Initial state
