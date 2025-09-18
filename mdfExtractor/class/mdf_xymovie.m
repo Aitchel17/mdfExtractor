@@ -21,14 +21,14 @@ classdef mdf_xymovie < mdf
         end
         
         function obj = loadbehavior(obj)
-                        if strcmp(obj.mobj.ReadParameter('Video Enabled'),'-1')
+            if strcmp(obj.mobj.ReadParameter('Video Enabled'),'-1')
                 disp('Behavior camera enable = -1 , loading behavior data')
                 obj.behavior = mdf_xymovie.behaviorinfo(obj.mobj);
                 obj.info.behavior_enable = 1;
             else
                 disp('Behavior camera enable = 0 , check .mdf file')
                 obj.info.behavior_enable = 0;
-                        end
+            end
         end
 
         function savebehavior(obj)
@@ -52,7 +52,55 @@ classdef mdf_xymovie < mdf
                 disp('behavior disabled')
             end
         end
+    function savecompbehavior(obj) 
+        if obj.info.behavior_enable
+            disp('saving behavior')
+    
+            % 압축 가능한 Motion JPEG AVI로 변경
+            v1 = VideoWriter(fullfile([obj.info.mdfPath, obj.info.mdfName(1:end-4)], "eye.avi"), 'Motion JPEG AVI');
+            v2 = VideoWriter(fullfile([obj.info.mdfPath, obj.info.mdfName(1:end-4)], "whisker.avi"), 'Motion JPEG AVI');
+    
+            % 프레임 속도 및 압축 품질 설정
+            v1.FrameRate = 33;
+            v2.FrameRate = 33;
+            v1.Quality = 95;  % 0~100 (낮을수록 더 압축됨)
+            v2.Quality = 80;
+    
+            open(v1);
+            open(v2);
+    
+            for idx = 1:str2double(obj.behavior.fcount)
+                % 프레임 읽기 및 범위 변환
+                frame = uint8(mod(double(obj.mobj.ReadVideoFrame(idx)'), 256));
+    
+                % ROI 추출
+                eyeframe = frame(...
+                    obj.behavior.eyevertices(1,2):obj.behavior.eyevertices(3,2), ...
+                    obj.behavior.eyevertices(1,1):obj.behavior.eyevertices(3,1));
+    
+                whiskerframe = frame(...
+                    obj.behavior.whiskervertices(1,2):obj.behavior.whiskervertices(3,2), ...
+                    obj.behavior.whiskervertices(1,1):obj.behavior.whiskervertices(3,1));
+                % 1. 밝은 반사점 억제 + 명암도 확장 (clip 상위 1% 제거)
+                eyeframe = imgaussfilt(eyeframe,1);
+                high = double(prctile(eyeframe(:), 99)) / 255;  % 상위 0.5% 잘라내기
+                
+                eyeframe_adj = imadjust(eyeframe, [0, high], [0 1]);
 
+    
+                % 프레임 저장
+                writeVideo(v1, eyeframe_adj);
+                writeVideo(v2, whiskerframe);
+            end
+    
+            close(v1);
+            close(v2);
+    
+            disp('behavior data saved')
+        else
+            disp('behavior disabled')
+        end
+    end
 
         function state = updatestate(obj,parameters)
             % Change state.loadstart, and state.loadend if necessary

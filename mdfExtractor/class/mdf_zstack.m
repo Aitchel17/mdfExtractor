@@ -3,19 +3,23 @@ classdef mdf_zstack < mdf
     %   Detailed explanation goes here
     
     properties
-        Property1
     end
     
     methods
-        function obj = mdf_zstack()
-            obj@mdf();
+        function obj = mdf_zstack(pathlist)
+            obj@mdf(pathlist);
+            if  strcmp(obj.info.scanmode,'XY Movie') == 1
+                disp('use mdf_xymovie class')
+            end
+            try
+                rawzstack = mdf_readframes(obj.mobj,obj.state.ch2read,[obj.state.loadstart, obj.state.loadend]);
+            catch
+                rawzstack = mdf_readframes(obj.mobj,obj.state.ch2read,[obj.state.loadstart, obj.state.loadend]);
+            end
+
+            [obj.state.xpadstart, obj.state.xpadend] = mdf.findpadding(rawzstack);
         end
         
-        function outputArg = method1(obj,inputArg)
-            %METHOD1 Summary of this method goes here
-            %   Detailed explanation goes here
-            outputArg = obj.Property1 + inputArg;
-        end
     end
 end
 

@@ -13,23 +13,31 @@ classdef mdf
     end
     
     methods
-        function obj = mdf(option)
+        function obj = mdf(paths,objective,wavelength)
             arguments
-                option.objective = true;
-                option.wavelength = 0;
+                paths = [];
+                objective = true;
+                wavelength = 0;
             end
             %MDF Construct an instance of this class
             %   Detailed explanation goes here
-            [obj.info, obj.mobj] = mdf_init();
+            if isempty(paths)
+                [obj.info, obj.mobj] = mdf_init();
+            elseif ischar(paths) == 1
+                [obj.info, obj.mobj] = mdf_init(paths);
+            else
+                disp(class(paths))
+                disp("invalid path info")
+            end
             %   Default img frame reading parameter from beginning to end
             obj.state.loadend = obj.info.fcount;
             %   Default saving folder path
             obj.state.save_folder = fullfile(obj.info.mdfPath, obj.info.mdfName(1:end-4));
-            if ~option.objective
+            if ~objective
                 obj.info.objname = '<Unknown Objective>';
             end
-            if option.wavelength > 0
-                obj.info.excitation = option.wavelength;
+            if wavelength > 0
+                obj.info.excitation = wavelength;
             end
             if strcmp(obj.info.objname , '<Unknown Objective>')
                 disp('Objective information is missing')

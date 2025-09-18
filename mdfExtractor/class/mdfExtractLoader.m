@@ -3,16 +3,18 @@ classdef mdfExtractLoader
     %   Detailed explanation goes here
     properties
         info
-        analog
-        stackch1
-        stackch2
     end
 
    
     methods  
-        function obj = mdfExtractLoader()
-        info = struct();
-        info.analyzefolder = uigetdir;
+        function obj = mdfExtractLoader(extract_dir)
+            info = struct();
+
+            if nargin == 0
+                info.analyzefolder = uigetdir;
+            elseif nargin == 1
+                info.analyzefolder = extract_dir;
+            end
         info.infoname = dir(fullfile(info.analyzefolder, '*_info.txt'));
         info.infoname = info.infoname.name;
         tmp.infopath = fullfile(info.analyzefolder, info.infoname);
@@ -23,9 +25,6 @@ classdef mdfExtractLoader
         end
         obj.info = info;
         end
-        % function analog = loadanalog(obj)
-        % 
-        % end
 
         function stack = loadstack(obj, channel)
             arguments
@@ -39,6 +38,7 @@ classdef mdfExtractLoader
         end
     
         function analog = loadanalog(obj)
+            fprintf('Loading analog data from mdfExtracted folder')
             analogfname = dir(fullfile(obj.info.analyzefolder,'*_analog.txt')).name;
             filename = fullfile(obj.info.analyzefolder,analogfname);
             % Open the file
@@ -89,11 +89,11 @@ classdef mdfExtractLoader
 
             % Close the file
             fclose(fileid);
-
+            fprintf('analog loading complete')
         end
 
         function motion = loadmotion(obj)
-            
+            fprintf('Loading global motion data from mdfExtracted folder')
             motionfname = dir(fullfile(obj.info.analyzefolder,'*_motion.txt')).name;
             filename = fullfile(obj.info.analyzefolder,motionfname);
 
@@ -145,6 +145,7 @@ classdef mdfExtractLoader
         
             % Close the file
             fclose(fileid);
+            fprintf('Global motion loading complete')
         end
 
     end

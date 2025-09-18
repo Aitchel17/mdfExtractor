@@ -25,6 +25,9 @@ function [info, mobj] = mdf_init(path,mdfname)
         case 1
             info = struct();
             mdfPath = path;
+            [directory,fname,ext]=fileparts(mdfPath);
+            info.mdfName = [fname ext];
+            info.mdfPath = directory;
         otherwise
             info = struct();
            [info.mdfName, info.mdfPath] = uigetfile({'*.mdf'}); % select file by UI
@@ -70,6 +73,8 @@ function [info, mobj] = mdf_init(path,mdfname)
     info.imgch0range   = mobj.ReadParameter('Scanning Ch 0 Input Range');
     info.imgch1name    = mobj.ReadParameter('Scanning Ch 1 Name');
     info.imgch1range   = mobj.ReadParameter('Scanning Ch 1 Input Range');
+    info.imgch2name    = mobj.ReadParameter('Scanning Ch 2 Name');
+    info.imgch2range   = mobj.ReadParameter('Scanning Ch 2 Input Range');
     % initialize analog
 
 %% Scan mode specific info
