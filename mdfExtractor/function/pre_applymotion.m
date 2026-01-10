@@ -4,7 +4,6 @@ function [zstack,interp_drifttable] = pre_applymotion(zstack, drift_table)
 
     % Validate inputs
     num_frames = size(zstack,3);
-    assert(size(drift_table, 1) >= 4, 'drift_table must have at least 4 rows');
 
     % Extract and interpolate shifts
     original_frames = 1:size(drift_table, 2);

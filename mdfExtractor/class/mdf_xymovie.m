@@ -1,13 +1,13 @@
 classdef mdf_xymovie < mdf
     %MDF_ Summary of this class goes here
     %   Detailed explanation goes here
-    
+
     properties
         analog
         drifttable
         behavior
     end
-    
+
     methods
         function obj = mdf_xymovie()
             obj@mdf();
@@ -19,7 +19,7 @@ classdef mdf_xymovie < mdf
             analogfilename = fullfile(obj.state.save_folder, [obj.info.mdfName(1:end-4),'_analog.txt']);
             mdf_xymovie.saveanalog(obj.analog,analogfilename)
         end
-        
+
         function obj = loadbehavior(obj)
             if strcmp(obj.mobj.ReadParameter('Video Enabled'),'-1')
                 disp('Behavior camera enable = -1 , loading behavior data')
@@ -52,55 +52,55 @@ classdef mdf_xymovie < mdf
                 disp('behavior disabled')
             end
         end
-    function savecompbehavior(obj) 
-        if obj.info.behavior_enable
-            disp('saving behavior')
-    
-            % 압축 가능한 Motion JPEG AVI로 변경
-            v1 = VideoWriter(fullfile([obj.info.mdfPath, obj.info.mdfName(1:end-4)], "eye.avi"), 'Motion JPEG AVI');
-            v2 = VideoWriter(fullfile([obj.info.mdfPath, obj.info.mdfName(1:end-4)], "whisker.avi"), 'Motion JPEG AVI');
-    
-            % 프레임 속도 및 압축 품질 설정
-            v1.FrameRate = 33;
-            v2.FrameRate = 33;
-            v1.Quality = 95;  % 0~100 (낮을수록 더 압축됨)
-            v2.Quality = 80;
-    
-            open(v1);
-            open(v2);
-    
-            for idx = 1:str2double(obj.behavior.fcount)
-                % 프레임 읽기 및 범위 변환
-                frame = uint8(mod(double(obj.mobj.ReadVideoFrame(idx)'), 256));
-    
-                % ROI 추출
-                eyeframe = frame(...
-                    obj.behavior.eyevertices(1,2):obj.behavior.eyevertices(3,2), ...
-                    obj.behavior.eyevertices(1,1):obj.behavior.eyevertices(3,1));
-    
-                whiskerframe = frame(...
-                    obj.behavior.whiskervertices(1,2):obj.behavior.whiskervertices(3,2), ...
-                    obj.behavior.whiskervertices(1,1):obj.behavior.whiskervertices(3,1));
-                % 1. 밝은 반사점 억제 + 명암도 확장 (clip 상위 1% 제거)
-                eyeframe = imgaussfilt(eyeframe,1);
-                high = double(prctile(eyeframe(:), 99)) / 255;  % 상위 0.5% 잘라내기
-                
-                eyeframe_adj = imadjust(eyeframe, [0, high], [0 1]);
+        function savecompbehavior(obj)
+            if obj.info.behavior_enable
+                disp('saving behavior')
 
-    
-                % 프레임 저장
-                writeVideo(v1, eyeframe_adj);
-                writeVideo(v2, whiskerframe);
+                % 압축 가능한 Motion JPEG AVI로 변경
+                v1 = VideoWriter(fullfile([obj.info.mdfPath, obj.info.mdfName(1:end-4)], "eye.avi"), 'Motion JPEG AVI');
+                v2 = VideoWriter(fullfile([obj.info.mdfPath, obj.info.mdfName(1:end-4)], "whisker.avi"), 'Motion JPEG AVI');
+
+                % 프레임 속도 및 압축 품질 설정
+                v1.FrameRate = 33;
+                v2.FrameRate = 33;
+                v1.Quality = 95;  % 0~100 (낮을수록 더 압축됨)
+                v2.Quality = 80;
+
+                open(v1);
+                open(v2);
+
+                for idx = 1:str2double(obj.behavior.fcount)
+                    % 프레임 읽기 및 범위 변환
+                    frame = uint8(mod(double(obj.mobj.ReadVideoFrame(idx)'), 256));
+
+                    % ROI 추출
+                    eyeframe = frame(...
+                        obj.behavior.eyevertices(1,2):obj.behavior.eyevertices(3,2), ...
+                        obj.behavior.eyevertices(1,1):obj.behavior.eyevertices(3,1));
+
+                    whiskerframe = frame(...
+                        obj.behavior.whiskervertices(1,2):obj.behavior.whiskervertices(3,2), ...
+                        obj.behavior.whiskervertices(1,1):obj.behavior.whiskervertices(3,1));
+                    % 1. 밝은 반사점 억제 + 명암도 확장 (clip 상위 1% 제거)
+                    eyeframe = imgaussfilt(eyeframe,1);
+                    high = double(prctile(eyeframe(:), 99)) / 255;  % 상위 0.5% 잘라내기
+
+                    eyeframe_adj = imadjust(eyeframe, [0, high], [0 1]);
+
+
+                    % 프레임 저장
+                    writeVideo(v1, eyeframe_adj);
+                    writeVideo(v2, whiskerframe);
+                end
+
+                close(v1);
+                close(v2);
+
+                disp('behavior data saved')
+            else
+                disp('behavior disabled')
             end
-    
-            close(v1);
-            close(v2);
-    
-            disp('behavior data saved')
-        else
-            disp('behavior disabled')
         end
-    end
 
         function state = updatestate(obj,parameters)
             % Change state.loadstart, and state.loadend if necessary
@@ -109,13 +109,13 @@ classdef mdf_xymovie < mdf
 
             % Image loading parameter
             arguments
-                obj              
+                obj
                 parameters.loadstart(1,1) {mustBeNumeric} = obj.state.loadstart
                 parameters.loadend(1,1) {mustBeNumeric}   = obj.state.loadend
                 parameters.ch2read (1,1) {mustBeNumeric} = obj.state.ch2read
                 parameters.groupz = obj.state.groupz
             end
-          
+
             state = obj.state;
             state.ch2read = parameters.ch2read;
             state.loadstart = parameters.loadstart;
@@ -143,13 +143,13 @@ classdef mdf_xymovie < mdf
                 fieldname.motionvertices = true
                 fieldname.groupz = true
             end
-            
+
             % Initialize info with the existing obj.info
             info = obj.info;
-            
+
             % Get all field names from fieldname structure
             fields = fieldnames(fieldname);
-            
+
             % Iterate over the field names and update info if the fieldname value is true
             for i = 1:numel(fields)
                 field = fields{i}; % Get the current field name
@@ -172,20 +172,20 @@ classdef mdf_xymovie < mdf
                 option.groupz (1,1) {mustBeNumeric} = 10
             end
 
-            % update info, adding 
+            % update info, adding
             %   a. pixel shift
             %   b. padding coordination
             %   c. group averaging info
             %   d. plane info if its multiplane
             % for inspection purpose demo struct
-    
+
             % 0. first 5% of video to choose representative region fo
             % 1. pad correction
-            % 2. pixel shift correction  
+            % 2. pixel shift correction
             % 3. groupaveraging after padding removal
             % 4. denoise using median filter 3d [xy:3pix,z:5pix]
             % 5. drift correction estimation until work well
-    
+
             state = obj.state;
             state.refchannel = refimgchannel;
             state.ch2read = refimgchannel;
@@ -196,16 +196,16 @@ classdef mdf_xymovie < mdf
         end
 
         function estimated_drifttable = getdrifttable(obj)
-                % Preprcocessing (Padding removal -> post pixel shift correction -> Trim -> Non Negative -> group average -> medfilt3)
-                % group averaging
-                disp('group averaging')
-                zstack = pre_groupaverage(obj.stack, obj.state.groupz); % denoise by group averaging
-                % median filter xy3 z5 pixel
-                disp('3D median filtering')
-                zstack = medfilt3(zstack,[3,3,5]); % denoise by 3d median filter
-                estimated_drifttable = pre_estimatemotion(zstack,obj.state.refimg,obj.state.motionvertices);
-                driftfilename = fullfile(obj.state.save_folder, [obj.info.mdfName(1:end-4),'_motion.txt']);
-                mdf_xymovie.savemotion(estimated_drifttable,obj.info.fps/obj.state.groupz,driftfilename)
+            % Preprcocessing (Padding removal -> post pixel shift correction -> Trim -> Non Negative -> group average -> medfilt3)
+            % group averaging
+            disp('group averaging')
+            zstack = pre_groupaverage(obj.stack, obj.state.groupz); % denoise by group averaging
+            % median filter xy3 z5 pixel
+            disp('3D median filtering')
+            zstack = medfilt3(zstack,[3,3,5]); % denoise by 3d median filter
+            estimated_drifttable = pre_estimatemotion(zstack,obj.state.refimg,obj.state.motionvertices);
+            driftfilename = fullfile(obj.state.save_folder, [obj.info.mdfName(1:end-4),'_motion.txt']);
+            mdf_xymovie.savemotion(estimated_drifttable,obj.info.fps/obj.state.groupz,driftfilename)
         end
 
         function [zstack, applied_drifttable] = correctdrift(obj)
@@ -227,59 +227,60 @@ classdef mdf_xymovie < mdf
         end
 
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     end % end of method
-    
+
     methods (Access=protected, Static)
         function [state, demo] = staticdemo(demo,state)
-            [state.xpadstart,state.xpadend] = mdf.findpadding(demo.stack); % 1
-            demo.stack(demo.stack<0) = 0;
             state.xshift = mdf_pshiftexplorer(demo.stack); % 2.1
             demo.stack = mdf_pshiftcorrection(demo.stack,state.xshift); % 2.2
+            [state.xpadstart,state.xpadend] = mdf.findpadding(demo.stack); % 1
+            demo.stack(demo.stack<0) = 0;
+            disp(state.xpadstart)
             demo.stack = pre_groupaverage(demo.stack(:,state.xpadstart:state.xpadend,:), state.groupz); % 3
             demo.stack = medfilt3(demo.stack,[3,3,5]); % 4
-            % 5
+
             qualitycontrol = false;
             while qualitycontrol == false
                 [state.motionvertices, state.refframe] = mdf_rectangle_polygon(demo.stack,'rectangle');
                 state.refimg = demo.stack(:,:,state.refframe);
                 demo.drift_table = pre_estimatemotion(demo.stack,state.refimg,state.motionvertices);
                 [demo.correctedstack, demo.ip_Drifttable] = pre_applymotion(demo.stack,demo.drift_table);
-                qualitycontrol = util_checkstack(demo.correctedstack);
+                qualitycontrol = mdf.checkstack(demo.correctedstack);
             end
         end
 
         function behavior = behaviorinfo(mobj)
-                behavior.fwidth  = mobj.ReadParameter('Video Width');
-                behavior.fheight = mobj.ReadParameter('Video Height');
-                if strcmp(mobj.ReadParameter('Video Mode'),'0')
-                    behavior.videomode = 'mono_8bit';
-                else
-                    behavior.videomode = mobj.ReadParameter('Video Mode');
-                end
-                behavior.fcount = mobj.ReadParameter('Video Image Count');
-                behavior.frate = mobj.ReadParameter('Video Rate');
-                behavior.democount = 2000;
-                sampleFrame = mobj.ReadVideoFrame(1)';
-                [height, width] = size(sampleFrame);
-                demostack = zeros(height,width, behavior.democount);%, 'like', sampleFrame);
-                for idx = 1:behavior.democount
-                    demostack(:,:,idx) = mobj.ReadVideoFrame(idx)';
-                end
-                demostack = mod(demostack,256);
-                disp('select eye vertices')
-                [behavior.eyevertices, ~] = mdf_rectangle_polygon(demostack,'rectangle');
-                disp('select whisker and nose vertices')
-                [behavior.whiskervertices, ~] = mdf_rectangle_polygon(demostack,'rectangle');
-                figure("Name",'behavior demo')
-                sliceViewer(demostack)
+            behavior.fwidth  = mobj.ReadParameter('Video Width');
+            behavior.fheight = mobj.ReadParameter('Video Height');
+            if strcmp(mobj.ReadParameter('Video Mode'),'0')
+                behavior.videomode = 'mono_8bit';
+            else
+                behavior.videomode = mobj.ReadParameter('Video Mode');
+            end
+            behavior.fcount = mobj.ReadParameter('Video Image Count');
+            behavior.frate = mobj.ReadParameter('Video Rate');
+            behavior.democount = 2000;
+            sampleFrame = mobj.ReadVideoFrame(1)';
+            [height, width] = size(sampleFrame);
+            demostack = zeros(height,width, behavior.democount);%, 'like', sampleFrame);
+            for idx = 1:behavior.democount
+                demostack(:,:,idx) = mobj.ReadVideoFrame(idx)';
+            end
+            demostack = mod(demostack,256);
+            disp('select eye vertices')
+            [behavior.eyevertices, ~] = mdf_rectangle_polygon(demostack,'rectangle');
+            disp('select whisker and nose vertices')
+            [behavior.whiskervertices, ~] = mdf_rectangle_polygon(demostack,'rectangle');
+            figure("Name",'behavior demo')
+            sliceViewer(demostack)
         end
 
         function saveanalog(analog, filename)
             analogdata = analog.data;
             analoginfo = analog.info;
             fileID = fopen(filename, 'w');
-            
+
             % Header start
             fprintf(fileID, '--- Analog Info ---\n');
             % Write the struct fields and their values
@@ -297,7 +298,7 @@ classdef mdf_xymovie < mdf
                 fprintf(fileID, '%s: %s\n', fieldName, fieldValueStr);
             end
             % end of header
-             fprintf(fileID, '\n--- Analog Data ---\n');
+            fprintf(fileID, '\n--- Analog Data ---\n');
             % Write the data row by row (field names as row names)
             channelNames = fieldnames(analogdata); % Field names are row names
             for i = 1:numel(channelNames)

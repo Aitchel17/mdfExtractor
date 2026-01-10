@@ -1,7 +1,7 @@
 classdef mdf
     %MDF Summary of this class goes here
     %   Detailed explanation goes here
-    
+
     properties
         info
         stack
@@ -11,7 +11,7 @@ classdef mdf
             'ch2read',  1 ...
             );
     end
-    
+
     methods
         function obj = mdf(paths,objective,wavelength)
             arguments
@@ -41,8 +41,8 @@ classdef mdf
             end
             if strcmp(obj.info.objname , '<Unknown Objective>')
                 disp('Objective information is missing')
-            [obj.info.objname, obj.info.objpix] = mdf_objectiveselector();
-            obj.info.objpix = obj.info.objpix/str2double(obj.info.zoom(1:end-1));
+                [obj.info.objname, obj.info.objpix] = mdf_objectiveselector();
+                obj.info.objpix = obj.info.objpix/str2double(obj.info.zoom(1:end-1));
             end
             if ~exist(obj.state.save_folder, 'dir')
                 mkdir(obj.state.save_folder);
@@ -52,20 +52,20 @@ classdef mdf
             obj.state.xshift = 0;
             obj.state.groupz = 1;
         end
-        
-       
+
+
         function zstack = loadframes(obj)
-                    zstack = mdf_readframes(obj.mobj,obj.state.ch2read,[obj.state.loadstart, obj.state.loadend]);
-                    disp('Padding removal')
-                    zstack = zstack(:,obj.state.xpadstart:obj.state.xpadend,:);
-                    % xshift correction
-                    disp('Pixel shift correction')
-                    zstack = mdf_pshiftcorrection(zstack,obj.state.xshift);
-                    zstack(zstack<0) = 0; % Thresholding negative values to be 0 (as inverted PMT output and what mSCAN shows is positive value.)
+            zstack = mdf_readframes(obj.mobj,obj.state.ch2read,[obj.state.loadstart, obj.state.loadend]);
+            disp('Padding removal')
+            zstack = zstack(:,obj.state.xpadstart:obj.state.xpadend,:);
+            % xshift correction
+            disp('Pixel shift correction')
+            zstack = mdf_pshiftcorrection(zstack,obj.state.xshift);
+            zstack(zstack<0) = 0; % Thresholding negative values to be 0 (as inverted PMT output and what mSCAN shows is positive value.)
         end
 
         function logic = showstack(obj)
-            logic = util_checkstack(obj.stack);
+            logic = mdf.checkstack(obj.stack);
         end
 
         function info = savetiff(obj)
@@ -93,7 +93,7 @@ classdef mdf
             infoFields = fieldnames(saveinfo);
             infoValues = struct2cell(saveinfo);
             table_info = table(infoFields, infoValues, 'VariableNames', {'Field', 'Value'});
-        
+
             % Construct full file path
             save_infopath = fullfile(obj.state.save_folder, [saveinfo.mdfName(1:end-4),'_info.txt']);
             % Write the table to an Excel file (overwrite the file initially)
@@ -108,6 +108,80 @@ classdef mdf
             tmp.nzloc = find(mean_x~=-2048); % find location of value not -2048
             start_x = tmp.nzloc(1); % start point of non zero
             end_x = tmp.nzloc(end); % end point of non zero
+        end
+
+        function [state] = checkstack(stack, window_title)
+            arguments
+                stack
+                window_title = 'Stack Explorer'
+            end
+            % just for inspection purpose
+
+            % Create the main figure
+            stack = double(stack);
+            min_val = min(stack,[],'all');
+            max_val = max(stack,[],'all');
+            stack = (stack - min_val) / (max_val - min_val) * 65535;
+            stack = uint16(stack);
+            state = false;
+
+            fig = uifigure('Name', window_title, 'Position', [100, 100, 600, 400]);
+
+            % Create panels for controls and image display
+            imgPanel = uipanel(fig, 'Title', 'Slice Viewer', 'Position', [20, 120, 560, 260]);
+            controlPanel = uipanel(fig, 'Title', 'Console', 'Position', [20, 20, 560, 100]);
+
+            % Display the stack using sliceViewer
+            hStack = sliceViewer(stack, 'Parent', imgPanel);
+
+            % Extract the underlying axes object from the sliceViewer
+            hAxes = getAxesHandle(hStack);
+
+            % Add a label for the intensity range slider
+            uilabel(controlPanel, 'Text', 'Intensity Range:', 'Position', [20, 60, 100, 20]);
+
+            % Add a range slider for adjusting intensity range
+            intensitySlider = uislider(controlPanel, 'range',...
+                'Position', [130, 65, 400, 3], ...
+                'Limits', [0, 65535], ...
+                'Value', [0, 65535], ...
+                'MajorTicks', [], ...
+                'Orientation', 'horizontal', ...
+                'ValueChangedFcn', @(src, event) updatefig(hAxes, src.Value));
+
+            % Add instructions label
+            uilabel(controlPanel, ...
+                'Text', 'Adjust intensity and draw a rectangle around ROI. Then click Confirm.', ...
+                'Position', [20, 20, 500, 20], ...
+                'HorizontalAlignment', 'left');
+
+            % Add a Confirm button
+            uibutton(controlPanel, ...
+                'Text', 'Confirm', ...
+                'Position', [480, 10, 70, 30], ...
+                'ButtonPushedFcn', @(src, event) confirm()); % Resume execution when clicked
+
+            % Add Reset button
+            uibutton(controlPanel, ...
+                'Text', 'Reject', ...
+                'Position', [400, 10, 70, 30], ...
+                'ButtonPushedFcn', @(~, ~) uiresume(fig));
+            uiwait(fig);
+
+            % Close the figure
+            close(fig);
+
+            % Function to update intensity range dynamically
+            function updatefig(hAxes, range)
+                hAxes.CLim = range; % Adjust display range
+            end
+
+
+            % Function to reset ROI
+            function confirm()
+                state = hStack.SliceNumber; % Set the reset flag
+                uiresume(fig); % Resume
+            end
         end
     end
 end

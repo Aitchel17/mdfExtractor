@@ -4,7 +4,7 @@ function [selectedLens, pixelSize] = mdf_objectiveselector()
 
     % Define a list of objective lenses and their corresponding pixel sizes
     objectiveList = {'16x 0.8NA resonant', '16x 0.8NA galvo'};
-    pixelSizes = [0.57, 0.815]; % Pixel sizes corresponding to each lens
+    pixelSizes = [0.57, 0.825]; % Pixel sizes corresponding to each lens
     
     % Display a dialog box for selection
     selectionIndex = listdlg('PromptString', 'Select an objective lens:', ...
