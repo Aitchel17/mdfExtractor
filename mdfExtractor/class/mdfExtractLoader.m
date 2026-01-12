@@ -21,23 +21,12 @@ classdef mdfExtractLoader
             % Initialize path_struct
             obj.path_struct = struct();
 
-            % Helper to find single file
-            function fpath = get_filepath(folder, pattern)
-                d = dir(fullfile(folder, pattern));
-                if length(d) == 1
-                    fpath = fullfile(d.folder, d.name);
-                else
-                    warning('File pattern %s found %d times in %s. Using empty.', pattern, length(d), folder);
-                    fpath = '';
-                end
-            end
-
             % Populate path_struct
-            obj.path_struct.info = get_filepath(info.analyzefolder, '*_info.txt');
-            obj.path_struct.analog = get_filepath(info.analyzefolder, '*_analog.txt');
-            obj.path_struct.motion = get_filepath(info.analyzefolder, '*_motion.txt');
-            obj.path_struct.ch1 = get_filepath(info.analyzefolder, '*ch1.tif');
-            obj.path_struct.ch2 = get_filepath(info.analyzefolder, '*ch2.tif');
+            obj.path_struct.info = obj.get_filepath(info.analyzefolder, '*_info.txt');
+            obj.path_struct.analog = obj.get_filepath(info.analyzefolder, '*_analog.txt');
+            obj.path_struct.motion = obj.get_filepath(info.analyzefolder, '*_motion.txt');
+            obj.path_struct.ch1 = obj.get_filepath(info.analyzefolder, '*ch1.tif');
+            obj.path_struct.ch2 = obj.get_filepath(info.analyzefolder, '*ch2.tif');
             % Add other potential paths as needed (e.g. ch1.tif, ch2.tif can be handled similarly if consistent)
 
             % Load Info Table using the found path
@@ -245,6 +234,16 @@ classdef mdfExtractLoader
 
             close(h);
             toc
+        end
+
+        function fpath = get_filepath(folder, pattern)
+            filed_directory = dir(fullfile(folder, pattern));
+            if length(filed_directory) == 1
+                fpath = fullfile(filed_directory.folder, filed_directory.name);
+            else
+                warning('File pattern %s found %d times in %s. Using empty.', pattern, length(d), folder);
+                fpath = '';
+            end
         end
 
         function [frames, fps] = io_loadavi(avidirectory)
