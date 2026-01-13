@@ -3,7 +3,7 @@ classdef mdfExtractLoader
     %   Detailed explanation goes here
     properties
         info
-        path_struct = struct()
+        dir_struct = struct()
     end
 
 
@@ -18,23 +18,25 @@ classdef mdfExtractLoader
                 info.analyzefolder = extract_dir;
             end
 
-            % Initialize path_struct
-            obj.path_struct = struct();
+            % Initialize dir_struct
+            obj.dir_struct = struct();
 
-            % Populate path_struct
-            obj.path_struct.info = obj.get_filepath(info.analyzefolder, '*_info.txt');
-            obj.path_struct.analog = obj.get_filepath(info.analyzefolder, '*_analog.txt');
-            obj.path_struct.motion = obj.get_filepath(info.analyzefolder, '*_motion.txt');
-            obj.path_struct.ch1 = obj.get_filepath(info.analyzefolder, '*ch1.tif');
-            obj.path_struct.ch2 = obj.get_filepath(info.analyzefolder, '*ch2.tif');
+            % Populate dir_struct
+            obj.dir_struct.info = obj.get_filepath(info.analyzefolder, '*_info.txt');
+            obj.dir_struct.analog = obj.get_filepath(info.analyzefolder, '*_analog.txt');
+            obj.dir_struct.motion = obj.get_filepath(info.analyzefolder, '*_motion.txt');
+            obj.dir_struct.ch1 = obj.get_filepath(info.analyzefolder, '*ch1.tif');
+            obj.dir_struct.ch2 = obj.get_filepath(info.analyzefolder, '*ch2.tif');
+            obj.dir_struct.eye = obj.get_filepath(info.analyzefolder, '*eye.avi');
+            obj.dir_struct.whisker = obj.get_filepath(info.analyzefolder, '*whisker.avi');
             % Add other potential paths as needed (e.g. ch1.tif, ch2.tif can be handled similarly if consistent)
 
             % Load Info Table using the found path
-            if ~isempty(obj.path_struct.info)
-                [~, info.infoname, ~] = fileparts(obj.path_struct.info);
+            if ~isempty(obj.dir_struct.info)
+                [~, info.infoname, ~] = fileparts(obj.dir_struct.info);
                 info.infoname = [info.infoname '.txt']; % Reconstruct name if needed, or just store name separately
 
-                tmp.info_table = readtable(obj.path_struct.info);
+                tmp.info_table = readtable(obj.dir_struct.info);
                 for i = 1:height(tmp.info_table)
                     info.(tmp.info_table.Field{i}) = tmp.info_table.Value{i};
                 end
@@ -53,29 +55,24 @@ classdef mdfExtractLoader
 
             disp('Loading')
 
-            if isfield(obj.path_struct, channel) && ~isempty(obj.path_struct.(channel))
-                fpath = obj.path_struct.(channel);
+            if isfield(obj.dir_struct, channel) && ~isempty(obj.dir_struct.(channel))
+                fpath = obj.dir_struct.(channel);
             else
-                error('Channel file path for %s not found in path_struct.', channel);
+                error('Channel file path for %s not found in dir_struct.', channel);
             end
 
-            % We need to pass folder and pattern to analyze_readtiff, or update analyze_readtiff to take full path.
-            % Looking at analyze_readtiff (private static), it takes (folderdirectory, namingpattern).
-            % It does a dir() search inside. We should probably update it or just wrap it.
-            % Ideally, analyze_readtiff should take the direct file path if we already have it.
-            % However, to minimize changes to analyze_readtiff if it's complex, we can pass folder and EXACT name.
 
-            [folder, name, ext] = fileparts(fpath);
-            stack = obj.analyze_readtiff(folder, [name, ext]);
+
+            stack = obj.analyze_readtiff(fpath);
         end
 
         function analog = loadanalog(obj)
             fprintf('Loading analog data from mdfExtracted folder')
-            if isfield(obj.path_struct, 'analog') && ~isempty(obj.path_struct.analog)
-                filename = obj.path_struct.analog;
+            if isfield(obj.dir_struct, 'analog') && ~isempty(obj.dir_struct.analog)
+                filename = obj.dir_struct.analog;
             else
                 % Fallback or error
-                error('Analog file path not found in path_struct.');
+                error('Analog file path not found in dir_struct.');
             end
 
             % Open the file
@@ -134,11 +131,11 @@ classdef mdfExtractLoader
         end
         function motion = loadmotion(obj)
             fprintf('Loading global motion data from mdfExtracted folder')
-            if isfield(obj.path_struct, 'motion') && ~isempty(obj.path_struct.motion)
-                filename = obj.path_struct.motion;
+            if isfield(obj.dir_struct, 'motion') && ~isempty(obj.dir_struct.motion)
+                filename = obj.dir_struct.motion;
             else
                 % Fallback or error
-                error('Motion file path not found in path_struct.');
+                error('Motion file path not found in dir_struct.');
             end
 
             % Open the file
@@ -196,16 +193,14 @@ classdef mdfExtractLoader
 
 
     methods (Access=private,Static)
-        function channelData = analyze_readtiff(folderdirectory, namingpattern)
+        function channelData = analyze_readtiff(filePath)
             tic
-            channelDir = dir(fullfile(folderdirectory, namingpattern));
-            if length(channelDir) ~= 1
-                fprintf('%s file not exist or plural num: %d\n', namingpattern, length(channelDir));
+            if ~isfile(filePath)
+                fprintf('%s file not exist\n', filePath);
                 channelData = [];
                 return;
             end
 
-            filePath = fullfile(folderdirectory, channelDir.name);
             info = imfinfo(filePath);
             numFrames = numel(info);
 
@@ -222,6 +217,7 @@ classdef mdfExtractLoader
             tiffObj = Tiff(filePath, 'r');
             cleanup = onCleanup(@() tiffObj.close());
 
+            [~, namingpattern, ~] = fileparts(filePath);
             h = waitbar(0, sprintf('Loading %s...', namingpattern));
 
             for idx = 1:numFrames
@@ -241,77 +237,12 @@ classdef mdfExtractLoader
             if length(filed_directory) == 1
                 fpath = fullfile(filed_directory.folder, filed_directory.name);
             else
-                warning('File pattern %s found %d times in %s. Using empty.', pattern, length(d), folder);
+                warning('File pattern %s found %d times in %s. Using empty.', pattern, length(filed_directory), folder);
                 fpath = '';
             end
         end
 
-        function [frames, fps] = io_loadavi(avidirectory)
-            %READ_AVI One-pass AVI loader with preallocation (Duration*FPS estimate).
-            % saved
-            %   Returns grayscale frames (HxWxN, uint8) and fps.
-            %   Shows progress in 5% steps.
 
-            [fpath, tag, ~] = fileparts(avidirectory);
-            frames = [];
-            fps    = NaN;
-
-            if ~isfile(avidirectory)
-                fprintf('%s.avi does not exist\n', tag);
-                return;
-            end
-
-            try
-                vr = VideoReader(avidirectory);
-                fps = vr.FrameRate;
-                % If mdfExtractor videowriter initialized and ends up with error, avi file might not contain the frames in it
-                if ~hasFrame(vr)
-                    warning('%s.avi has no frames.', tag);
-                    return;
-                end
-
-                % Read first frame for total frame estimation for preallocation
-                firstFrame = readFrame(vr);
-                if ndims(firstFrame) == 3
-                    firstFrame = firstFrame(:,:,1); % grayscale 강제
-                end
-                [H,W] = size(firstFrame);
-
-                % Estimated total frame number
-                nEst = max(1, floor(vr.Duration * vr.FrameRate));
-
-                % Array preallocation using estimated dimension
-                frames = zeros(H,W,nEst,'uint8');
-                frames(:,:,1) = firstFrame;
-
-                % Read frames, update waitbar every 5%
-                k = 1;
-                pctNext = 5;
-                while hasFrame(vr)
-                    k = k + 1;
-                    f = readFrame(vr);
-                    if ndims(f) == 3, f = f(:,:,1); end
-                    if ~isa(f,'uint8'), f = im2uint8(f); end
-                    if k > size(frames,3)   % overshoot 대비 확장
-                        frames(:,:,end+1) = 0;
-                    end
-                    frames(:,:,k) = f;
-
-                    % update waitbar
-                    pct = floor((k / nEst) * 100);
-                    if pct >= pctNext
-                        fprintf('\r[%s] Progress: %3d%%', tag, min(pct,100));
-                        pctNext = pctNext + 5;
-                    end
-                end
-
-                fprintf('\r[%s] Done. %d frames @ %.3f fps\n', tag, k, fps);
-            catch ME
-                warning('Failed to read %s: %s', tag, ME.message);
-                frames = [];
-                fps    = NaN;
-            end
-        end
     end
 
 end
