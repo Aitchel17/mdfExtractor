@@ -66,7 +66,7 @@ classdef mdfExtractLoader
             stack = obj.analyze_readtiff(fpath);
         end
 
-        function analog = loadanalog(obj)
+        function analog_info = loadanalog_info(obj)
             fprintf('Loading analog data from mdfExtracted folder')
             if isfield(obj.dir_struct, 'analog') && ~isempty(obj.dir_struct.analog)
                 filename = obj.dir_struct.analog;
@@ -82,9 +82,7 @@ classdef mdfExtractLoader
             end
 
             % Initialize output structs
-            analog = struct();
-            analog.info = struct();
-            analog.data = struct();
+            analog_info = struct();
 
             % Read header information
             section = 'header'; % Track which section we are in
@@ -106,7 +104,55 @@ classdef mdfExtractLoader
                     key = strtrim(tokens{1});
                     value = strtrim(tokens{2});
                     % Store in info struct
-                    analog.info.(key) = value;
+                    analog_info.(key) = value;
+                end
+
+                % Process data section
+                if strcmp(section, 'data') && contains(line, ':')
+                    break
+                end
+            end
+
+            % Close the file
+            fclose(fileid);
+            fprintf('analog loading complete')
+        end
+
+        function analog_data = loadanalog_data(obj)
+            fprintf('Loading analog data from mdfExtracted folder')
+            if isfield(obj.dir_struct, 'analog') && ~isempty(obj.dir_struct.analog)
+                filename = obj.dir_struct.analog;
+            else
+                % Fallback or error
+                error('Analog file path not found in dir_struct.');
+            end
+
+            % Open the file
+            fileid = fopen(filename, 'r');
+            if fileid == -1
+                error('Could not open the file: %s', filename);
+            end
+
+            % Initialize output structs
+            analog_data = struct();
+
+            % Read header information
+            section = 'header'; % Track which section we are in
+            while ~feof(fileid)
+                line = strtrim(fgetl(fileid)); % Read line and trim whitespace
+
+                % Check for section headers
+                if contains(line, '--- Analog Info')
+                    section = 'header';
+                    continue;
+                elseif contains(line, '--- Analog Data')
+                    section = 'data';
+                    continue;
+                end
+
+                % Process header info
+                if strcmp(section, 'header') && contains(line, ':')
+                    continue;
                 end
 
                 % Process data section
@@ -117,7 +163,7 @@ classdef mdfExtractLoader
                     % Convert to numeric array
                     value = str2num(value); %#ok<ST2NM>
                     % Store in analog data struct
-                    analog.data.(key) = value;
+                    analog_data.(key) = value;
                 end
             end
 
