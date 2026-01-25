@@ -1,6 +1,6 @@
 # Matlab autosave
-.asv
+*.asv
 # Outputs
-.avi
-.tif
-.tiff
+*.avi
+*.tif
+*.tiff
