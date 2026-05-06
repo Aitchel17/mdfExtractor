@@ -12,9 +12,11 @@ classdef mdf_zstack < mdf
                 disp('use mdf_xymovie class')
             end
             try
-                rawzstack = mdf_readframes(obj.mobj,obj.state.ch2read,[obj.state.loadstart, obj.state.loadend]);
+                frames   = obj.state.loadstart : obj.state.loadend;
+                rawzstack = mdf_readframes(obj.mobj, obj.state.ch2read, frames);
             catch
-                rawzstack = mdf_readframes(obj.mobj,obj.state.ch2read,[obj.state.loadstart, obj.state.loadend]);
+                frames   = obj.state.loadstart : obj.state.loadend;
+                rawzstack = mdf_readframes(obj.mobj, obj.state.ch2read, frames);
             end
 
             [obj.state.xpadstart, obj.state.xpadend] = mdf.findpadding(rawzstack);

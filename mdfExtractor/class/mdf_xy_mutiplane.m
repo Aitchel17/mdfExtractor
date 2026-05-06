@@ -74,12 +74,16 @@ classdef mdf_xy_mutiplane < mdf_xymovie
             state.ch2read = refimgchannel;
             state.groupz = option.groupz;
             demo.fend = round((obj.info.fcount - state.loadstart)/20);
-            demo.stack = mdf_readframes(obj.mobj,state.refchannel,[state.loadstart, demo.fend],state.num_plane,state.plane2read); % 0
+            frames    = (state.loadstart : state.num_plane : demo.fend) + (state.plane2read - 1);
+            frames    = frames(frames <= demo.fend);
+            demo.stack = mdf_readframes(obj.mobj, state.refchannel, frames); % 0
             [state, demo] = mdf_xymovie.staticdemo(demo,state);
         end
 
         function zstack = loadframes(obj)
-            zstack = mdf_readframes(obj.mobj,obj.state.ch2read,[obj.state.loadstart, obj.state.loadend],obj.state.num_plane,obj.state.plane2read);
+            frames = (obj.state.loadstart : obj.state.num_plane : obj.state.loadend) + (obj.state.plane2read - 1);
+            frames = frames(frames <= obj.state.loadend);
+            zstack = mdf_readframes(obj.mobj, obj.state.ch2read, frames);
             disp('Padding removal')
             zstack = zstack(:,obj.state.xpadstart:obj.state.xpadend,:);
             % xshift correction

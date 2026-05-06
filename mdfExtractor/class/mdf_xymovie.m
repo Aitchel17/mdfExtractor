@@ -52,6 +52,7 @@ classdef mdf_xymovie < mdf
                 disp('behavior disabled')
             end
         end
+        
         function savecompbehavior(obj)
             if obj.info.behavior_enable
                 disp('saving behavior')
@@ -190,8 +191,16 @@ classdef mdf_xymovie < mdf
             state.refchannel = refimgchannel;
             state.ch2read = refimgchannel;
             state.groupz = option.groupz;
-            demo.fend = round((obj.info.fcount - state.loadstart)/20);
-            demo.stack = mdf_readframes(obj.mobj,state.refchannel,[state.loadstart, demo.fend]); % 0
+            % Sparse representative sampling across the full video.
+            % Read ~5% of frames spread uniformly so the demo is not biased
+            % to the beginning. Each chunk is exactly groupz frames so that
+            % pre_groupaverage always gets complete, aligned groups.
+            total_frames = obj.info.fcount - state.loadstart + 1;
+            n_chunks     = max(5, round(total_frames * 0.05 / state.groupz));
+            chunk_starts = unique(round(linspace(state.loadstart, ...
+                               obj.info.fcount - state.groupz + 1, n_chunks)));
+            frames = reshape((chunk_starts(:) + (0:state.groupz-1))', 1, []);
+            demo.stack = mdf_readframes(obj.mobj, state.refchannel, frames); % 0
             [state, demo] = mdf_xymovie.staticdemo(demo,state);
         end
 

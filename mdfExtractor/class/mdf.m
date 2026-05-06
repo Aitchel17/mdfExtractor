@@ -55,7 +55,8 @@ classdef mdf
 
 
         function zstack = loadframes(obj)
-            zstack = mdf_readframes(obj.mobj,obj.state.ch2read,[obj.state.loadstart, obj.state.loadend]);
+            frames  = obj.state.loadstart : obj.state.loadend;
+            zstack = mdf_readframes(obj.mobj, obj.state.ch2read, frames);
             disp('Padding removal')
             zstack = zstack(:,obj.state.xpadstart:obj.state.xpadend,:);
             % xshift correction

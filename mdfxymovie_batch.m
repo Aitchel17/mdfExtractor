@@ -9,13 +9,13 @@ max(firstframe,[],"all")
 %%
 min(firstframe,[],"all")
 %%
-nfiles = 10; % Specify the number of files
+nfiles = 1; % Specify the number of files
 files = cell(1, nfiles); % Preallocate cell array to hold file objects
-%%
+%
 for i = 1:nfiles
     % Create and initialize file object
     files{i} = mdf_xymovie();
-    files{i}.state = files{i}.demo(2, 'groupz', 10); % Initial state 
+    files{i}.state = files{i}.demo(1, 'groupz', 4); % Initial state 
 end
 
  %%
@@ -32,7 +32,7 @@ for i = 1:nfiles
     files{i}.savetiff(); % Save TIFF
     files{i}.stack = []; % Clear memory
     % Channel 2 Processing
-    files{i}.state = files{i}.updatestate('ch2read', 1); % Update state for channel 2
+    files{i}.state = files{i}.updatestate('ch2read', 2); % Update state for channel 2
     files{i}.stack = files{i}.loadframes();
     files{i}.stack = files{i}.correctdrift(); % Use drift table from channel 1
     files{i}.stack = files{i}.afterprocess(); % After process
