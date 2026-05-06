@@ -32,7 +32,14 @@ function [zstack,interp_drifttable] = pre_applymotion(zstack, drift_table)
          zstack(:, :, i) = imtranslate(frame, [col_shift, row_shift], 'FillValues', -2048);
     end
     toc;
-    zstack = zstack(1+max_col:end+min_col,1+max_row:end+min_row,:);
+    % Crop to the common valid region across all shifted frames.
+    % max(0,...) ensures we never add a positive offset to the start index
+    % min(0,...) ensures we never add a positive offset to the end index
+    row_start = 1  + max(0, max_col);
+    row_end   = size(zstack, 1) + min(0, min_col);
+    col_start = 1  + max(0, max_row);
+    col_end   = size(zstack, 2) + min(0, min_row);
+    zstack = zstack(row_start:row_end, col_start:col_end, :);
 
     fprintf('Pixel shift correction completed.\n');
 
