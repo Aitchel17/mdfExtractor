@@ -69,12 +69,15 @@ function [info, mobj] = mdf_init(path,mdfname)
     info.fwidth            = str2double(mobj.ReadParameter('Frame Width'));
     info.laserpower        = mobj.ReadParameter('Laser intensity');
     % Imaging Channel info
+    % black level varies between recordings; the name has no 'Scanning' prefix
     info.imgch0name    = mobj.ReadParameter('Scanning Ch 0 Name');
     info.imgch0range   = mobj.ReadParameter('Scanning Ch 0 Input Range');
+    info.imgch0black   = readparam_ornan(mobj, 'Ch 0 black level');
+    info.imgch0gain    = readparam_ornan(mobj, 'Integrator 0 gain');
     info.imgch1name    = mobj.ReadParameter('Scanning Ch 1 Name');
     info.imgch1range   = mobj.ReadParameter('Scanning Ch 1 Input Range');
-    info.imgch2name    = mobj.ReadParameter('Scanning Ch 2 Name');
-    info.imgch2range   = mobj.ReadParameter('Scanning Ch 2 Input Range');
+    info.imgch1black   = readparam_ornan(mobj, 'Ch 1 black level');
+    info.imgch1gain    = readparam_ornan(mobj, 'Integrator 1 gain');
     % initialize analog
 
 %% Scan mode specific info
@@ -89,4 +92,18 @@ function [info, mobj] = mdf_init(path,mdfname)
     end
    disp([info.scanmode,info.mdfName,'is loaded'])
 
+end
+function value = readparam_ornan(mobj, name)
+%READPARAM_ORNAN  A parameter the file may not carry, as a number or NaN.
+%   ReadParameter returns the string 'No match' for a name it does not know.
+%
+%   IN   mobj   1x1 COM     the open MCSX.Data control
+%        name   1xM char    the parameter name, exactly as MCSX spells it
+%   OUT  value  1x1 double  the number, or NaN when absent or unparseable
+    raw = mobj.ReadParameter(name);
+    if strcmp(raw, 'No match') || isempty(strtrim(raw))
+        value = NaN;
+        return
+    end
+    value = str2double(raw);
 end

@@ -55,14 +55,28 @@ classdef mdf
 
 
         function zstack = loadframes(obj)
-            frames  = obj.state.loadstart : obj.state.loadend;
-            zstack = mdf_readframes(obj.mobj, obj.state.ch2read, frames);
-            disp('Padding removal')
-            zstack = zstack(:,obj.state.xpadstart:obj.state.xpadend,:);
-            % xshift correction
-            disp('Pixel shift correction')
-            zstack = mdf_pshiftcorrection(zstack,obj.state.xshift);
-            zstack(zstack<0) = 0; % Thresholding negative values to be 0 (as inverted PMT output and what mSCAN shows is positive value.)
+            % Chunked read, so crop, pshift and the clip run on a chunk not the range
+            frames       = obj.state.loadstart : obj.state.loadend;
+            n_frame      = numel(frames);
+            chunk_frames = 1000;   % frames per read call (count)
+            n_chunk      = ceil(n_frame / chunk_frames);
+
+            zstack = [];   % h x w x n_frame, allocated once the corrected width is known
+            for c = 1:n_chunk
+                frame_idx = (c-1)*chunk_frames + 1 : min(c*chunk_frames, n_frame);
+                chunk = mdf_readframes(obj.mobj, obj.state.ch2read, frames(frame_idx));
+                chunk = chunk(:, obj.state.xpadstart:obj.state.xpadend, :);
+                if obj.state.xshift ~= 0
+                    chunk = mdf_pshiftcorrection(chunk, obj.state.xshift);
+                end
+                chunk(chunk<0) = 0; % Thresholding negative values to be 0 (as inverted PMT output and what mSCAN shows is positive value.)
+                if isempty(zstack)
+                    [h, w, ~] = size(chunk);
+                    zstack = zeros(h, w, n_frame, 'like', chunk);
+                end
+                zstack(:, :, frame_idx) = chunk; %#ok<AGROW> preallocated above
+                fprintf('%.2f%% loaded\n', frame_idx(end) * 100 / n_frame);
+            end
         end
 
         function logic = showstack(obj)
