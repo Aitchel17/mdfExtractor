@@ -16,6 +16,7 @@ classdef mdf_xymovie < mdf
             obj.state.xpadstart = 1;
             obj.state.xpadend = obj.info.fwidth;
             obj.state.xshift = 0;
+            obj.state.medfilt_size = [3, 3, 5];   % 1 x 3, medfilt3 window [xy xy z]
             analogfilename = fullfile(obj.state.save_folder, [obj.info.mdfName(1:end-4),'_analog.txt']);
             mdf_xymovie.saveanalog(obj.analog,analogfilename)
         end
@@ -115,6 +116,7 @@ classdef mdf_xymovie < mdf
                 parameters.loadend(1,1) {mustBeNumeric}   = obj.state.loadend
                 parameters.ch2read (1,1) {mustBeNumeric} = obj.state.ch2read
                 parameters.groupz = obj.state.groupz
+                parameters.medfilt_size (1,3) {mustBeNumeric} = obj.state.medfilt_size
             end
 
             state = obj.state;
@@ -122,6 +124,7 @@ classdef mdf_xymovie < mdf
             state.loadstart = parameters.loadstart;
             state.loadend = parameters.loadend;
             state.groupz = parameters.groupz;
+            state.medfilt_size = parameters.medfilt_size;
 
             if state.loadend > obj.info.fcount % if calculated frame end exceed end of frame, load from start to the end
                 disp('Duration exceed total frame, loadend set to the end')
@@ -143,6 +146,7 @@ classdef mdf_xymovie < mdf
                 fieldname.refchannel = true
                 fieldname.motionvertices = true
                 fieldname.groupz = true
+                fieldname.medfilt_size = true
             end
 
             % Initialize info with the existing obj.info
@@ -157,6 +161,8 @@ classdef mdf_xymovie < mdf
                 if fieldname.(field) % Check if the field is flagged as true
                     if strcmp(field, 'motionvertices') % Special case for motionvertices
                         info.(field) = strjoin(string(reshape(obj.state.motionvertices', 1, [])));
+                    elseif strcmp(field, 'medfilt_size') % writetable needs a scalar or a string
+                        info.(field) = strjoin(string(obj.state.medfilt_size));
                     else
                         info.(field) = obj.state.(field); % General case
                     end
@@ -171,6 +177,7 @@ classdef mdf_xymovie < mdf
                 obj
                 refimgchannel (1,1) {mustBeNumeric}
                 option.groupz (1,1) {mustBeNumeric} = 10
+                option.medfilt_size (1,3) {mustBeNumeric} = obj.state.medfilt_size
             end
 
             % update info, adding
@@ -191,6 +198,7 @@ classdef mdf_xymovie < mdf
             state.refchannel = refimgchannel;
             state.ch2read = refimgchannel;
             state.groupz = option.groupz;
+            state.medfilt_size = option.medfilt_size;
             % Sparse representative sampling across the full video.
             % Read ~5% of frames spread uniformly so the demo is not biased
             % to the beginning. Each chunk is exactly groupz frames so that
@@ -209,10 +217,18 @@ classdef mdf_xymovie < mdf
             % group averaging
             disp('group averaging')
             zstack = pre_groupaverage(obj.stack, obj.state.groupz); % denoise by group averaging
-            % median filter xy3 z5 pixel
+            % median filter, state.medfilt_size
             disp('3D median filtering')
-            zstack = medfilt3(zstack,[3,3,5]); % denoise by 3d median filter
+            zstack = medfilt3(zstack,obj.state.medfilt_size); % denoise by 3d median filter
             estimated_drifttable = pre_estimatemotion(zstack,obj.state.refimg,obj.state.motionvertices);
+            % the whole table at once; pre_estimatemotion drew one per call
+            figure('name', 'Pixel Shift', 'NumberTitle', 'off');
+            subplot(2, 1, 1);
+            plot(estimated_drifttable(4, :));
+            title('X shift');
+            subplot(2, 1, 2);
+            plot(estimated_drifttable(3, :));
+            title('Y shift');
             driftfilename = fullfile(obj.state.save_folder, [obj.info.mdfName(1:end-4),'_motion.txt']);
             mdf_xymovie.savemotion(estimated_drifttable,obj.info.fps/obj.state.groupz,driftfilename)
         end
@@ -247,7 +263,7 @@ classdef mdf_xymovie < mdf
             demo.stack(demo.stack<0) = 0;
             disp(state.xpadstart)
             demo.stack = pre_groupaverage(demo.stack(:,state.xpadstart:state.xpadend,:), state.groupz); % 3
-            demo.stack = medfilt3(demo.stack,[3,3,5]); % 4
+            demo.stack = medfilt3(demo.stack,state.medfilt_size); % 4
 
             qualitycontrol = false;
             while qualitycontrol == false
@@ -321,7 +337,12 @@ classdef mdf_xymovie < mdf
             fclose(fileID);
         end
 
+    end % end of method
+
+    methods (Static)
         function savemotion(motiontable,motionfps,filename)
+            % public: a chunked caller builds the table over several loads and
+            % writes it once, so the write cannot sit inside getdrifttable
             yerror = mat2str(motiontable(1,:));
             xerror = mat2str(motiontable(2,:));
             ymotion = mat2str(motiontable(3,:));
@@ -338,6 +359,6 @@ classdef mdf_xymovie < mdf
             fclose(fileID);
 
         end
-    end % end of method
+    end
 end
 

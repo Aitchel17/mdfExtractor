@@ -56,9 +56,13 @@ classdef mdf
 
         function zstack = loadframes(obj)
             % Chunked read, so crop, pshift and the clip run on a chunk not the range
-            frames       = obj.state.loadstart : obj.state.loadend;
-            n_frame      = numel(frames);
-            chunk_frames = 1000;   % frames per read call (count)
+            frames      = obj.state.loadstart : obj.state.loadend;
+            n_frame     = numel(frames);
+            chunk_bytes = 256e6;   % one chunk (bytes); ~1000 frames, 96% of plateau rate
+
+            frame_bytes  = obj.info.fheight * obj.info.fwidth * 2;   % int16 off the control
+            chunk_frames = max(1, floor(chunk_bytes / frame_bytes));
+            chunk_frames = min(chunk_frames, n_frame);
             n_chunk      = ceil(n_frame / chunk_frames);
 
             zstack = [];   % h x w x n_frame, allocated once the corrected width is known
