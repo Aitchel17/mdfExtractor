@@ -1,5 +1,6 @@
 function zstack = mdf_readframes(mobj, imgch, frames)
-    % Read frames from an ActiveX-based .mdf file in batches.
+    % Read the given frames through a reused chunk buffer into a preallocated
+    % output. Used to collect chunks in a cell and cat them; see CLAUDE_LOG.md
     %
     % Inputs:
     %   mobj   - ActiveX object with ReadFrame method
@@ -7,57 +8,33 @@ function zstack = mdf_readframes(mobj, imgch, frames)
     %   frames - Vector of frame indices to read (compute outside this function)
     %
     % Output:
-    %   zstack - H x W x numel(frames) image stack
+    %   zstack - H x W x numel(frames) image stack (native pixel class)
     %
     % Example — read every 2nd frame from 100 to 500 on plane 1 of 3:
     %   frames = (100 : 3 : 500) + (1 - 1);   % plane2read=1, num_plane=3
     %   zstack = mdf_readframes(mobj, imgch, frames);
 
-    % Parameters
-    batchSize = 1000;
-    verbose   = true;
-
-    totalFrames = numel(frames);
-    numBatches  = ceil(totalFrames / batchSize);
-
-    % Pre-allocate cell array for batch results
-    zstack = cell(1, numBatches);
-
-    % Process each batch
-    tic;
-    for b = 1:numBatches
-        fprintf('%.2f%% loaded\n', b * 100 / numBatches);
-        batchIdx    = (b-1)*batchSize+1 : min(b*batchSize, totalFrames);
-        zstack{b}   = io_readframes_simple(mobj, imgch, frames(batchIdx));
+    n_frame = numel(frames);
+    if n_frame == 0
+        zstack = [];
+        return;
     end
-    toc;
+    chunk_frames = min(1000, n_frame); % frames per buffer fill (count)
 
-    % Combine batches
-    if verbose
-        fprintf('Combining batches into final Z-stack...\n');
-    end
-    zstack = cat(3, zstack{:});
-end
-
-function zstack = io_readframes_simple(mobj, imgch, indices)
-    % Helper function to sequentially read frames
-    % Inputs:
-    %   mobj - ActiveX object
-    %   imgch - Image channel
-    %   indices - Indices of frames to read
-    % Outputs:
-    %   zstack - 3D image stack
-
-    numFrames = numel(indices);
-
-    % Read first frame to get dimensions
-    sampleFrame = mobj.ReadFrame(imgch, indices(1))';
+    % probe the first frame for size and class, then allocate once
+    sampleFrame = mobj.ReadFrame(imgch, frames(1))';
     [height, width] = size(sampleFrame);
-    zstack = zeros(height, width, numFrames, 'like', sampleFrame);
+    zstack = zeros(height, width, n_frame, 'like', sampleFrame);
+    chunk  = zeros(height, width, chunk_frames, 'like', sampleFrame);
 
-    % Read each frame sequentially
-    for idx = 1:numFrames
-        frameIdx = indices(idx);
-        zstack(:, :, idx) = mobj.ReadFrame(imgch, frameIdx)';
+    n_chunk = ceil(n_frame / chunk_frames);
+    for c = 1:n_chunk
+        frame_idx = (c-1)*chunk_frames + 1 : min(c*chunk_frames, n_frame);
+        n_held    = numel(frame_idx);
+        for k = 1:n_held
+            chunk(:, :, k) = mobj.ReadFrame(imgch, frames(frame_idx(k)))';
+        end
+        zstack(:, :, frame_idx) = chunk(:, :, 1:n_held);
+        fprintf('%.2f%% loaded\n', frame_idx(end) * 100 / n_frame);
     end
 end
