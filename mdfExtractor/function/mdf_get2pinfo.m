@@ -2,7 +2,7 @@
 % Prerequisite: MCSX 
 %                       >> https://www.sutter.com/MICROSCOPES/mcs.html
 
-% FUNCTION NAME:    io_tpsm
+% FUNCTION NAME:    mdf_get2pinfo
 %
 % DESCRIPTION:      Sutter .mdf Data input - output function
 % INPUT:            .mdf
@@ -12,32 +12,13 @@
 % WRITTEN BY:       C. Hyunseok Lee 2024-09-14
 %
 %%%%%%%%%%%%%%%%%%%%%%%%
-function [info, mobj] = mdf_init(path,mdfname)
+function info = mdf_get2pinfo(mobj)
+% Get two photon imaging parameter from mobj
 
-    %%
-    switch nargin
-        case 2
-            info = struct();
-            mdfPath = fullfile(path,mdfname);
-            info.mdfName = mdfname;
-            info.mdfPath = path;
+% IN   mobj  1 x 1 COM     an open MCSX.Data control
+% OUT  info  1 x 1 struct  in the order saveinfo writes them to _info.txt
+    info = struct();
 
-        case 1
-            info = struct();
-            mdfPath = path;
-            [directory,fname,ext]=fileparts(mdfPath);
-            info.mdfName = [fname ext];
-            info.mdfPath = directory;
-        otherwise
-            info = struct();
-           [info.mdfName, info.mdfPath] = uigetfile({'*.mdf'}); % select file by UI
-           mdfPath = [info.mdfPath, info.mdfName];
-    end
-   
-    
-    mobj = actxserver('MCSX.Data'); % Create Component Object Model (COM)
-    mobj.invoke('OpenMCSFile', mdfPath); % Using COM open .mdf file
-    
     % General Info
     info.User = mobj.ReadParameter('Created by');
     info.Date = mobj.ReadParameter('Created on');
@@ -90,8 +71,6 @@ function [info, mobj] = mdf_init(path,mdfname)
         info.pcontol   = mobj.ReadParameter('Intensity Control');
         info.repeat    = mobj.ReadParameter('Stack Repeat Count');
     end
-   disp([info.scanmode,info.mdfName,'is loaded'])
-
 end
 function value = readparam_ornan(mobj, name)
 %READPARAM_ORNAN  A parameter the file may not carry, as a number or NaN.
