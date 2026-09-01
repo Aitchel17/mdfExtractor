@@ -1,11 +1,8 @@
 classdef mdf
-    %MDF Summary of this class goes here
-    %   Detailed explanation goes here
-
+    % Make mdffile connection using 
     properties
         info
         stack
-        mobj % auto
         state = struct( ...
             'loadstart', 1,...
             'ch2read',  1 ...
@@ -19,25 +16,39 @@ classdef mdf
                 objective = true;
                 wavelength = 0;
             end
-            %MDF Construct an instance of this class
-            %   Detailed explanation goes here
+            % 0. Get mdf path to open
             if isempty(paths)
-                [obj.info, obj.mobj] = mdf_init();
+                [mdfName, mdfPath] = uigetfile({'*.mdf'});
+                mdfPath = fileparts(fullfile(mdfPath, mdfName));
             elseif ischar(paths) == 1
-                [obj.info, obj.mobj] = mdf_init(paths);
+                [mdfPath, stem, ext] = fileparts(paths);
+                mdfName = [stem, ext];
             else
                 disp(class(paths))
-                disp("invalid path info")
+                error('mdf:paths', 'paths must be a char row or empty');
             end
-            %   Default img frame reading parameter from beginning to end
-            obj.state.loadend = obj.info.fcount;
-            %   Default saving folder path
+            obj.info.mdfName = mdfName;
+            obj.info.mdfPath = mdfPath;
+            % 1. open mdf
+            mobj = obj.openmdf();
+            % 2. gather information
+            obj.info = mdf_get2pinfo(mobj, mdfPath, mdfName);
+            % 3. close the connection, so nothing else is blocked from the file
+            delete(mobj);
+            % 4. default setup
+            obj.state.loadend = obj.info.fcount; % read to end
+            % Saving folder path
             obj.state.save_folder = fullfile(obj.info.mdfPath, obj.info.mdfName(1:end-4));
+            obj.state.xpadstart = 1; % no left crop
+            obj.state.xpadend = obj.info.fwidth; % no right crop
+            obj.state.xshift = 0; % no pixel shift
+            obj.state.groupz = 1; % no frame averaging
+            % 5. complete imaging parameter
             if ~objective
                 obj.info.objname = '<Unknown Objective>';
             end
             if wavelength > 0
-                obj.info.excitation = wavelength;
+                obj.info.excitation = wavelength;   % Wavelength
             end
             if strcmp(obj.info.objname , '<Unknown Objective>')
                 disp('Objective information is missing')
@@ -47,32 +58,33 @@ classdef mdf
             if ~exist(obj.state.save_folder, 'dir')
                 mkdir(obj.state.save_folder);
             end
-            obj.state.xpadstart = 1;
-            obj.state.xpadend = obj.info.fwidth;
-            obj.state.xshift = 0;
-            obj.state.groupz = 1;
-        end
+                end
 
 
         function zstack = loadframes(obj)
-            % Chunked read, so crop, pshift and the clip run on a chunk not the range
+            % 0. Set which frames to read
             frames      = obj.state.loadstart : obj.state.loadend;
             n_frame     = numel(frames);
-            chunk_bytes = 256e6;   % one chunk (bytes); ~1000 frames, 96% of plateau rate
-
-            frame_bytes  = obj.info.fheight * obj.info.fwidth * 2;   % int16 off the control
-            chunk_frames = max(1, floor(chunk_bytes / frame_bytes));
-            chunk_frames = min(chunk_frames, n_frame);
-            n_chunk      = ceil(n_frame / chunk_frames);
-
+            % 1. Calculate chunk number from chunk size
+            chunk_megabytes = 256;       % too small (overhead) or big chunk (big array modification)
+            pixel_megabytes = 2 / 1e6;   % int16
+            frame_megabytes = obj.info.fheight * obj.info.fwidth * pixel_megabytes;
+            chunk_frames    = max(1, floor(chunk_megabytes / frame_megabytes));
+            chunk_frames    = min(chunk_frames, n_frame);
+            n_chunk         = ceil(n_frame / chunk_frames);
+            % 2. open .mdf file
+            mobj = obj.openmdf();
+            % 3. Chunk run load - pad removal - pshift correction - non negative 
             zstack = [];   % h x w x n_frame, allocated once the corrected width is known
-            for c = 1:n_chunk
-                frame_idx = (c-1)*chunk_frames + 1 : min(c*chunk_frames, n_frame);
-                chunk = mdf_readframes(obj.mobj, obj.state.ch2read, frames(frame_idx));
-                chunk = chunk(:, obj.state.xpadstart:obj.state.xpadend, :);
+            for chunk_idx = 1:n_chunk
+                frame_idx = (chunk_idx-1)*chunk_frames + 1 : min(chunk_idx*chunk_frames, n_frame); % 3.0 make idx array
+                chunk = mdf_readframes(mobj, obj.state.ch2read, frames(frame_idx)); % 3.1 read frame
+                chunk = chunk(:, obj.state.xpadstart:obj.state.xpadend, :); % 3.2 pad removal
+                % 3.3 pshift correction
                 if obj.state.xshift ~= 0
                     chunk = mdf_pshiftcorrection(chunk, obj.state.xshift);
                 end
+
                 chunk(chunk<0) = 0; % Thresholding negative values to be 0 (as inverted PMT output and what mSCAN shows is positive value.)
                 if isempty(zstack)
                     [h, w, ~] = size(chunk);
@@ -81,6 +93,8 @@ classdef mdf
                 zstack(:, :, frame_idx) = chunk; %#ok<AGROW> preallocated above
                 fprintf('%.2f%% loaded\n', frame_idx(end) * 100 / n_frame);
             end
+            % 3. close the connection
+            delete(mobj);
         end
 
         function logic = showstack(obj)
@@ -117,6 +131,14 @@ classdef mdf
             save_infopath = fullfile(obj.state.save_folder, [saveinfo.mdfName(1:end-4),'_info.txt']);
             % Write the table to an Excel file (overwrite the file initially)
             writetable(table_info, save_infopath);
+        end
+    end
+
+    methods (Access=protected)
+        function mobj = openmdf(obj)
+            % return mobj, connected with .mdf by ActiveX
+            mobj = actxserver('MCSX.Data');
+            mobj.OpenMCSFile(fullfile(obj.info.mdfPath, obj.info.mdfName));
         end
     end
 
