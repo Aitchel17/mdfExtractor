@@ -32,9 +32,12 @@ classdef mdf
             % 1. open mdf
             mobj = obj.openmdf();
             % 2. gather information
-            obj.info = mdf_get2pinfo(mobj, mdfPath, mdfName);
+            read_info = mdf_get2pinfo(mobj);
             % 3. close the connection, so nothing else is blocked from the file
             delete(mobj);
+            % name and path stay first, so _info.txt opens with which file it is
+            obj.info = util_mergestruct(obj.info, read_info);
+            fprintf('%s %s is loaded\n', obj.info.scanmode, obj.info.mdfName);
             % 4. default setup
             obj.state.loadend = obj.info.fcount; % read to end
             % Saving folder path
@@ -74,7 +77,10 @@ classdef mdf
             n_chunk         = ceil(n_frame / chunk_frames);
             % 2. open .mdf file
             mobj = obj.openmdf();
-            % 3. Chunk run load - pad removal - pshift correction - non negative 
+            % 3. Chunk run load - pad removal - pshift correction
+            %    Negatives are kept. The PMT baseline sits near 0 and the noise
+            %    swings both ways, so clipping here and then averaging rectifies:
+            %    measured, it lifts a dim pixel by 97 counts and a bright one by 4
             zstack = [];   % h x w x n_frame, allocated once the corrected width is known
             for chunk_idx = 1:n_chunk
                 frame_idx = (chunk_idx-1)*chunk_frames + 1 : min(chunk_idx*chunk_frames, n_frame); % 3.0 make idx array
@@ -85,7 +91,6 @@ classdef mdf
                     chunk = mdf_pshiftcorrection(chunk, obj.state.xshift);
                 end
 
-                chunk(chunk<0) = 0; % Thresholding negative values to be 0 (as inverted PMT output and what mSCAN shows is positive value.)
                 if isempty(zstack)
                     [h, w, ~] = size(chunk);
                     zstack = zeros(h, w, n_frame, 'like', chunk);
