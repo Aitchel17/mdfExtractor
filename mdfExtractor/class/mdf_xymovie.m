@@ -10,20 +10,20 @@ classdef mdf_xymovie < mdf
 
     methods
         function obj = mdf_xymovie(paths)
-            % paths lets a caller that already knows the file skip uigetfile, which
-            % is what a parfor worker has to do -- mobj cannot cross into one
             arguments
                 paths = [];
             end
-            obj@mdf(paths);
-            mobj = obj.openmdf();
-            [obj.analog.data, obj.analog.info] = mdf_readanalog(mobj);
-            delete(mobj);
+            obj@mdf(paths);   % initialize by parent          
+            mobj = obj.openmdf();   % open mdf
+            [obj.analog.data, obj.analog.info] = mdf_readanalog(mobj); % read analog
+            delete(mobj); % close mdf
+            % default reading  option
             obj.state.groupz = 10;
             obj.state.xpadstart = 1;
             obj.state.xpadend = obj.info.fwidth;
             obj.state.xshift = 0;
             obj.state.medfilt_size = [3, 3, 5];   % 1 x 3, medfilt3 window [xy xy z]
+            % save analog
             analogfilename = fullfile(obj.state.save_folder, [obj.info.mdfName(1:end-4),'_analog.txt']);
             mdf_xymovie.saveanalog(obj.analog,analogfilename)
         end
@@ -223,19 +223,6 @@ classdef mdf_xymovie < mdf
 
         function state = restore(obj)
             %RESTORE  The demo() state back from the recording's _info.txt.
-            %   demo() asks three things -- the pixel shift, the motion rectangle
-            %   and the reference slice -- and saveinfo writes all three. What it
-            %   decides on its own follows from a read that has no dialog in it,
-            %   so the state comes back without asking anything again.
-            %
-            %   xpadstart, xpadend and refimg are NOT in _info.txt and are
-            %   recomputed here, which needs the frame list demo() read. refframes
-            %   names acquisition frames rather than a position in that list, so it
-            %   is the one field that can CHECK the list rather than assume it.
-            %
-            %   loadstart in _info.txt is the value at save time. Every example
-            %   calls demo() first and sets loadstart afterwards, so the demo read
-            %   started at 1; the block check below is what proves it per recording.
             info_path = fullfile(obj.state.save_folder, [obj.info.mdfName(1:end-4), '_info.txt']);
             saved     = fileread(info_path);
 
@@ -333,9 +320,11 @@ classdef mdf_xymovie < mdf
             %DEMOPREPARE  The half of the demo that asks nothing.
             %   staticdemo and restore both run it, so the refimg restore
             %   recomputes is the one demo would have produced.
+            %   Negatives are kept, the same as loadframes -- refimg and the frames
+            %   it is correlated against have to carry the same convention.
+            %   findpadding runs first because it looks for the -2048 fill
             stack = mdf_pshiftcorrection(stack, xshift);
             [xpadstart, xpadend] = mdf.findpadding(stack);
-            stack(stack < 0) = 0;
             stack = pre_groupaverage(stack(:, xpadstart:xpadend, :), groupz);
             stack = medfilt3(stack, medfilt_size);
         end
@@ -428,19 +417,23 @@ classdef mdf_xymovie < mdf
         function savemotion(motiontable,motionfps,filename)
             % public: a chunked caller builds the table over several loads and
             % writes it once, so the write cannot sit inside getdrifttable
-            yerror = mat2str(motiontable(1,:));
-            xerror = mat2str(motiontable(2,:));
-            ymotion = mat2str(motiontable(3,:));
-            xmotion = mat2str(motiontable(4,:));
+            % dft_registration's four rows, in its order. They were written as
+            % yerror / xerror / ymotion / xmotion, which put an axis on the two
+            % that have none and said y,x for what are row,col -- the same
+            % confusion that cut every TIFF with the axes crossed until 2026-08-29
+            regerror  = mat2str(motiontable(1,:));   % sqrt(1 - |CCmax|^2/(E1*E2)), 0 = identical
+            diffphase = mat2str(motiontable(2,:));   % angle(CCmax), 0 for real images
+            rowshift  = mat2str(motiontable(3,:));   % the correction, not the tissue's motion
+            colshift  = mat2str(motiontable(4,:));
 
             fileID = fopen(filename,'w');
             fprintf(fileID, '--- Motion info ---\n');
             fprintf(fileID, 'driftestimation_fps: %s\n', num2str(motionfps));
             fprintf(fileID, '--- Motion table ---\n');
-            fprintf(fileID, '%s: %s\n', 'yerror', yerror);
-            fprintf(fileID, '%s: %s\n', 'xerror', xerror);
-            fprintf(fileID, '%s: %s\n', 'ymotion', ymotion);
-            fprintf(fileID, '%s: %s\n', 'xmotion', xmotion);
+            fprintf(fileID, '%s: %s\n', 'regerror', regerror);
+            fprintf(fileID, '%s: %s\n', 'diffphase', diffphase);
+            fprintf(fileID, '%s: %s\n', 'rowshift', rowshift);
+            fprintf(fileID, '%s: %s\n', 'colshift', colshift);
             fclose(fileID);
 
         end
