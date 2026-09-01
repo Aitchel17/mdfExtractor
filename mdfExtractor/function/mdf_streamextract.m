@@ -4,8 +4,8 @@ function info = mdf_streamextract(obj, opt)
     % known until the last frame's drift is in, so the .mdf pass writes UNCROPPED
     % and a second pass over the TIFF cuts it. The other channel reuses the table.
     %
-    % obj must already carry a demo() state: refimg, motionvertices, xpad, xshift,
-    % groupz, medfilt_size. Nothing here is interactive.
+    % obj must already carry a demomotion state: motion_refimg, motion_vertices,
+    % motion_medfilt, xpad, xshift, groupz. Nothing here is interactive.
     %
     % Inputs:
     %   obj              - mdf_xymovie after demo()
@@ -36,20 +36,19 @@ function info = mdf_streamextract(obj, opt)
 
     % medfilt3 reaches floor(z/2) columns either way, and the interpolation reads
     % one column beyond the chunk on both sides, so the read carries one more
-    overlap_groups = floor(obj.state.medfilt_size(3) / 2) + 1;
+    overlap_groups = floor(obj.state.motion_medfilt(3) / 2) + 1;
     % the filtered stack is read only inside the motion rectangle, so the filter
     % runs on that box grown by the window's own xy reach. The grown margin is
     % what gives a rectangle edge pixel its true neighbours instead of medfilt3's
     % symmetric padding; z needs none, overlap_groups already carries it
-    motion_xy    = round(obj.state.motionvertices);
-    reach        = floor(obj.state.medfilt_size(1:2) / 2);   % 1 x 2 count
+    motion_xy    = round(obj.state.motion_vertices);
+    reach        = floor(obj.state.motion_medfilt(1:2) / 2);   % 1 x 2 count
     medfilt_rows = max(1, motion_xy(1,2) - reach(1)) : min(obj.info.fheight, motion_xy(3,2) + reach(1));   % 1 x n index
     medfilt_cols = max(1, motion_xy(1,1) - reach(2)) : min(loaded_width, motion_xy(3,1) + reach(2));       % 1 x n index
     % pre_applymotion maps the table onto the frames with linspace, and both ends
     % are known before any frame is read, so every frame's position is too
     shift_at = @(frame) 1 + (frame - opt.frame_start) * (n_out - 1) / (n_total - 1);
-
-    obj.state = obj.updatestate('ch2read', opt.drift_channel);
+    obj = obj.updatestate('ch2read', opt.drift_channel);
     info = obj.state2info();
     info.savefps = info.fps / groupz;
     if isa(info.objpix, 'double')
@@ -71,13 +70,17 @@ function info = mdf_streamextract(obj, opt)
         chunk_stop  = min(chunk_start + chunk_frames - 1, frame_last);
         read_start  = max(opt.frame_start, chunk_start - overlap_groups*groupz);
         read_stop   = min(frame_last, chunk_stop + overlap_groups*groupz);
-        obj.state   = obj.updatestate("loadstart", read_start, "loadend", read_stop);
+        obj = obj.updatestate("loadstart", read_start, "loadend", read_stop);
         stack = obj.loadframes;
 
         averaged    = pre_groupaverage(stack, groupz);
         medfilt_box = averaged(medfilt_rows, medfilt_cols, :);
-        medfilt_box = medfilt3(medfilt_box, obj.state.medfilt_size);
+        medfilt_box = medfilt3(medfilt_box, obj.state.motion_medfilt);
         averaged(medfilt_rows, medfilt_cols, :) = medfilt_box;
+        % whole frame, because CLAHE tiles the region it is given and demoprepare
+        % ran it before the motion rectangle existed. Off by default
+        averaged = mdf_xymovie.preprocstack(averaged, ...
+            obj.state.motion_clahe, obj.state.motion_clahe_size, obj.state.motion_wiener);
 
         read_col1 = (read_start  - opt.frame_start)/groupz + 1;
         chunk_col = (chunk_start - opt.frame_start)/groupz + 1;
@@ -86,7 +89,7 @@ function info = mdf_streamextract(obj, opt)
         col_idx   = max(1, floor(frame_pos(1))) : min(n_out, ceil(frame_pos(end)));
 
         chunk_drift = pre_estimatemotion(averaged(:, :, col_idx - read_col1 + 1), ...
-            obj.state.refimg, obj.state.motionvertices);
+            obj.state.motion_refimg, obj.state.motion_vertices);
         clear averaged
         own_col = (chunk_col : chunk_col + n_own - 1) - col_idx(1) + 1;
         drift_table = [drift_table, chunk_drift(:, own_col)]; %#ok<AGROW>
@@ -117,7 +120,7 @@ function info = mdf_streamextract(obj, opt)
     %  second pass -- the uncropped file that forces one on channel 1 is the
     %  price of not knowing the frame size until the last drift is in
     if opt.other_channel > 0
-        obj.state = obj.updatestate('ch2read', opt.other_channel);
+        obj = obj.updatestate('ch2read', opt.other_channel);
         cut_path  = fullfile(obj.state.save_folder, ...
             sprintf('%s_ch%d.tif', name, opt.other_channel));
         cut_size = [row_range(2)-row_range(1)+1, col_range(2)-col_range(1)+1];
@@ -131,7 +134,7 @@ function info = mdf_streamextract(obj, opt)
         for chunk_idx = 1:numel(chunk_starts)
             chunk_start = chunk_starts(chunk_idx);
             chunk_stop  = min(chunk_start + chunk_frames - 1, frame_last);
-            obj.state   = obj.updatestate("loadstart", chunk_start, "loadend", chunk_stop);
+            obj = obj.updatestate("loadstart", chunk_start, "loadend", chunk_stop);
             stack = obj.loadframes;
             at    = chunk_start - opt.frame_start + 1;
             n_in  = chunk_stop - chunk_start + 1;

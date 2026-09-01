@@ -4,13 +4,14 @@ clear, clc
 
 file1 = mdf_xymovie();
 
-file1.state = file1.updatestate('num_plane',2);
-file1.state = file1.demo(2,'plane2read',1); 
-file1.info = file1.state2info("loadstart",true,'xshift',true,'refframe',true,'motionvertices',true);
+file1 = file1.updatestate('num_plane',2);
+[file1, d] = file1.demoload(2);
+file1 = file1.demomotion(d);
+file1.info = file1.state2info("loadstart",true,'xshift',true,'motion_refframes',true,'motion_vertices',true);
 file1.stack = file1.loadframes;
 file1.drifttable = file1.getdrifttable;
 file1.stack = file1.correctdrift;
-file1.state = file1.updatestate('groupz',1);
+file1 = file1.updatestate('groupz',1);
 
 file1.stack = file1.afterprocess;
 file1.info = file1.savetiff;
@@ -21,7 +22,7 @@ file1.info = file1.state2info("loadend",true);
 file1.saveinfo()
 
 % set load parameter to 2nd plane
-file1.state = file1.updatestate('plane2read',2);
+file1 = file1.updatestate('plane2read',2);
 % load 2nd plane 
 file1.stack = file1.loadframes;
 % correct drift table using previous

@@ -3,6 +3,11 @@ classdef mdf
     properties
         info
         stack
+    end
+
+    % the reading window is a cursor mdf_streamextract moves per chunk, and the
+    % rest is what demoload and demomotion settled. Both belong to the methods
+    properties (SetAccess = protected)
         state = struct( ...
             'loadstart', 1,...
             'ch2read',  1 ...

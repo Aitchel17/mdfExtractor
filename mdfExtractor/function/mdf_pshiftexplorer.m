@@ -1,76 +1,53 @@
 function [pshift] = mdf_pshiftexplorer(stack)
-
+%MDF_PSHIFTEXPLORER  Pick the bidirectional scan phase offset by eye.
+%   The mean over the whole demo stack. The offset is fixed per line parity, so
+%   it survives frame averaging unchanged while the shot noise does not.
+%
+%   The image is shown in its own counts. It used to be rescaled by
+%   (x - min)/max, and min is the -2048 the sinusoidal correction fills the
+%   margins with, which left the tissue in the top sixth of the bar.
+%
+% IN   stack   H x W x T int16   raw frames, margins still at -2048
+% OUT  pshift  1 x 1 double      columns the even lines are moved by
 
     disp('Post pixel shift correction, check image');
-    % Create the main figure
+    clim_floor  = -32;                          % below the PMT baseline, above the margins
+    meanproject = mean(double(stack), 3);
+    clim_range  = [clim_floor, max(meanproject, [], 'all')];
+
     fig = uifigure('Name', 'Pixel Shift Correction', 'Position', [100, 100, 532, 280]);
-    
-    % Create panels for controls and image display
-    imgPanel = uipanel(fig, 'Title', 'Mean Projection', 'Position', [10, 110, 512, 160]);
+    imgPanel     = uipanel(fig, 'Title', 'Mean Projection', 'Position', [10, 110, 512, 160]);
     controlPanel = uipanel(fig, 'Title', 'Console', 'Position', [10, 10, 512, 100]);
+    ax   = uiaxes(imgPanel, 'Position', [0, 0, 512, 128]);
+    hImg = imshow(meanproject, clim_range, 'Parent', ax);
 
-    currentstack = stack;
-    % Create UI Axes inside the panel
-    ax = uiaxes(imgPanel, 'Position', [0, 0, 512, 128]);
-    
-    % Calculate the mean projection
-    meanproject = mean(stack, 3);
-    meanproject = meanproject - min(meanproject,[],'all');
-    meanproject = meanproject/max(meanproject,[],'all');
-    meanproject = meanproject*65535;
-
-    disp_img = meanproject;
-    
-    % Display the image on the UI Axes
-    hImg = imshow(disp_img, [0, 65536], 'Parent', ax);
-    
-    % Editable text box for pshift value input
     uicontrol('Style', 'text', 'Parent', controlPanel, 'Position', [20, 40, 50, 20], 'String', 'pShift:');
-    % pshiftEdit = uicontrol('Style', 'edit', 'Parent', controlPanel, 'Position', [70, 40, 30, 30], 'String', '0');
     pshiftEdit = uieditfield(controlPanel, 'numeric', 'Position', [70, 40, 30, 30], 'Value', 0, ...
-        'ValueChangedFcn', @(src, event) previewShift(stack, ax, src.Value, hImg));
+        'ValueChangedFcn', @(src, event) previewShift(src.Value));
 
-    % Slider for adjusting display range dynamically
     uicontrol('Style', 'text', 'Parent', controlPanel, 'Position', [150, 40, 100, 20], 'String', 'Intensity Range:');
-    vmin = int8(min(meanproject,[],'all'));
-    vmax = int16(max(meanproject,[],'all'));
-    uislider(controlPanel, "range", 'Value', [0, 65535],'Limits', [0, 65535] , 'Position', [250, 70, 200, 3], ...
-        'ValueChangingFcn', @(src, event) updateContrast(hImg, event.Value));
-    
-        
-    % Confirm button to resume execution
+    uislider(controlPanel, 'range', 'Value', clim_range, 'Limits', clim_range, ...
+        'Position', [250, 70, 200, 3], ...
+        'ValueChangingFcn', @(src, event) updateContrast(event.Value));
+
     uicontrol('Style', 'pushbutton', 'Parent', controlPanel, 'Position', [400, 5, 80, 30], ...
-        'String', 'Confirm', 'Callback', @(src, event) uiresume(gcbf)); % Resume execution when clicked
-    
-    % Wait for confirmation
+        'String', 'Confirm', 'Callback', @(src, event) uiresume(gcbf));
     uiwait(fig);
 
     pshift = pshiftEdit.Value;
-    % Get the pshift value from the edit box
     close(fig);
     disp(['Post xshift pixel = ' num2str(pshift)]);
-    % Update image dynamically with intensity range
-    function updatefig(meanproject, hImg, vrange)
-        hImg.CData = meanproject; % Keep the original data
-        hImg.Parent.CLim = [vrange(1), vrange(2)]; % Adjust display range
+
+    function updateContrast(vrange)
+        ax.CLim = vrange;
     end
 
-    % Preview function to simulate pixel shift
-    % Update the contrast dynamically
-        function updateContrast(hImg, vrange)
-            hImg.Parent.CLim = [vrange(1), vrange(2)]; % Adjust display range
-        end
-
-     function previewShift(stack, ax, pshift, hImg)
-        currentstack = mdf_pshiftcorrection(stack,pshift);
-
-        % Update the preview image
-        disp_img = mean(currentstack, 3);
-        disp_img = disp_img - min(disp_img,[],'all');
-        disp_img = disp_img/max(disp_img,[],'all');
-        disp_img = disp_img*65536;
-        hImg.CData = disp_img;
-        title(ax, sprintf('Preview of Mean Projection (pShift = %d)', pshift));
+    % CLim is never recomputed here, so two pshift values are seen on one scale
+    function previewShift(shift_by)
+        shifted = mdf_pshiftcorrection(stack, shift_by);
+        preview = mean(double(shifted), 3);
+        hImg.CData = preview;
+        ax.XLim = [0.5, size(preview, 2) + 0.5];
+        title(ax, sprintf('Preview of Mean Projection (pShift = %d)', shift_by));
     end
-
 end

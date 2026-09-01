@@ -11,7 +11,7 @@ classdef mdf_xy_mutiplane < mdf_xymovie
             obj.state.plane2read = 1;
         end
 
-        function state = updatestate(obj,parameters)
+        function obj = updatestate(obj,parameters)
             % Change state.loadstart, and state.loadend if necessary
             % Input: sec --> converted to frame using info.fps
             % (If want to set offset)
@@ -27,30 +27,32 @@ classdef mdf_xy_mutiplane < mdf_xymovie
                 parameters.groupz = obj.state.groupz
             end
           
-            state = obj.state;
-            state.ch2read = parameters.ch2read;
-            state.loadstart = parameters.loadstart;
-            state.loadend = parameters.loadend;
-            state.groupz = parameters.groupz;
-            state.num_plane = parameters.num_plane;
-            state.plane2read = parameters.plane2read;
+            obj.state.ch2read = parameters.ch2read;
+            obj.state.loadstart = parameters.loadstart;
+            obj.state.loadend = parameters.loadend;
+            obj.state.groupz = parameters.groupz;
+            obj.state.num_plane = parameters.num_plane;
+            obj.state.plane2read = parameters.plane2read;
 
-            if state.loadend > obj.info.fcount % if calculated frame end exceed end of frame, load from start to the end
+            if obj.state.loadend > obj.info.fcount % beyond the last frame, read to the end
                 disp('Duration exceed total frame, loadend set to the end')
-                state.loadend = obj.info.fcount;
+                obj.state.loadend = obj.info.fcount;
             end
-            if state.loadstart < 1 % if calculated frame end exceed end of frame, load from start to the end
+            if obj.state.loadstart < 1
                 disp('frame start should above 1')
-                state.loadstart = 1;
+                obj.state.loadstart = 1;
             end
         end
 
-        function [state,demo] = demo(obj,refimgchannel,refimgplane,option)
+        function [obj, demo] = demoload(obj, refimgchannel, refimgplane, option)
+            %DEMOLOAD  As mdf_xymovie.demoload, but the frame list is strided by
+            %   num_plane and offset to one plane, and it is the first 5% rather
+            %   than blocks spread over the whole recording. demomotion is inherited.
             arguments
                 obj
                 refimgchannel (1,1) {mustBeNumeric}
                 refimgplane (1,1) {mustBeNumeric}
-                option.groupz (1,1) {mustBeNumeric} = 10
+                option.groupz (1,1) {mustBeNumeric} = obj.state.groupz
             end
 
             % update info, adding 
@@ -67,23 +69,26 @@ classdef mdf_xy_mutiplane < mdf_xymovie
             % 4. denoise using median filter 3d [xy:3pix,z:5pix]
             % 5. drift correction estimation until work well
     
-            state = obj.state;
-            state.refchannel = refimgchannel;
-            state.refplane  = refimgplane;
-            state.plane2read = refimgplane;
-            state.ch2read = refimgchannel;
-            state.groupz = option.groupz;
-            demo.fend = round((obj.info.fcount - state.loadstart)/20);
-            frames    = (state.loadstart : state.num_plane : demo.fend) + (state.plane2read - 1);
-            frames    = frames(frames <= demo.fend);
-            demo.stack = mdf_readframes(obj.mobj, state.refchannel, frames); % 0
-            [state, demo] = mdf_xymovie.staticdemo(demo,state);
+            obj.state.motion_refchannel = refimgchannel;
+            obj.state.refplane   = refimgplane;
+            obj.state.plane2read = refimgplane;
+            obj.state.ch2read    = refimgchannel;
+            obj.state.groupz     = option.groupz;
+            demo.fend   = round((obj.info.fcount - obj.state.loadstart)/20);
+            frames      = (obj.state.loadstart : obj.state.num_plane : demo.fend) + (obj.state.plane2read - 1);
+            demo.frames = frames(frames <= demo.fend);
+            mobj = obj.openmdf();
+            demo.raw = mdf_readframes(mobj, obj.state.motion_refchannel, demo.frames);
+            delete(mobj);   % the dialog below only needs the stack, not the file
+            obj.state.xshift = mdf_pshiftexplorer(demo.raw);
         end
 
         function zstack = loadframes(obj)
             frames = (obj.state.loadstart : obj.state.num_plane : obj.state.loadend) + (obj.state.plane2read - 1);
             frames = frames(frames <= obj.state.loadend);
-            zstack = mdf_readframes(obj.mobj, obj.state.ch2read, frames);
+            mobj = obj.openmdf();
+            zstack = mdf_readframes(mobj, obj.state.ch2read, frames);
+            delete(mobj);
             disp('Padding removal')
             zstack = zstack(:,obj.state.xpadstart:obj.state.xpadend,:);
             % xshift correction
