@@ -1,11 +1,5 @@
 function [pshift] = mdf_pshiftexplorer(stack)
-%MDF_PSHIFTEXPLORER  Pick the bidirectional scan phase offset by eye.
-%   The mean over the whole demo stack. The offset is fixed per line parity, so
-%   it survives frame averaging unchanged while the shot noise does not.
-%
-%   The image is shown in its own counts. It used to be rescaled by
-%   (x - min)/max, and min is the -2048 the sinusoidal correction fills the
-%   margins with, which left the tissue in the top sixth of the bar.
+%MDF_PSHIFTEXPLORER  reveal mismatch stripe by averaging stack, preview of corrected result.
 %
 % IN   stack   H x W x T int16   raw frames, margins still at -2048
 % OUT  pshift  1 x 1 double      columns the even lines are moved by

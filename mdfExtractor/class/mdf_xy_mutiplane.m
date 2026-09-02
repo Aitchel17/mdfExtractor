@@ -45,9 +45,7 @@ classdef mdf_xy_mutiplane < mdf_xymovie
         end
 
         function [obj, demo] = demoload(obj, refimgchannel, refimgplane, option)
-            %DEMOLOAD  As mdf_xymovie.demoload, but the frame list is strided by
-            %   num_plane and offset to one plane, and it is the first 5% rather
-            %   than blocks spread over the whole recording. demomotion is inherited.
+            %DEMOLOAD  load linspace(1,end, totalframe/20) then determine pshift
             arguments
                 obj
                 refimgchannel (1,1) {mustBeNumeric}
@@ -55,31 +53,22 @@ classdef mdf_xy_mutiplane < mdf_xymovie
                 option.groupz (1,1) {mustBeNumeric} = obj.state.groupz
             end
 
-            % update info, adding 
-            %   a. pixel shift
-            %   b. padding coordination
-            %   c. group averaging info
-            %   d. plane info if its multiplane
-            % for inspection purpose demo struct
-    
-            % 0. first 5% of video to choose representative region fo
-            % 1. pad correction
-            % 2. pixel shift correction  
-            % 3. groupaveraging after padding removal
-            % 4. denoise using median filter 3d [xy:3pix,z:5pix]
-            % 5. drift correction estimation until work well
-    
+            % set up
             obj.state.motion_refchannel = refimgchannel;
             obj.state.refplane   = refimgplane;
             obj.state.plane2read = refimgplane;
             obj.state.ch2read    = refimgchannel;
             obj.state.groupz     = option.groupz;
+
+            % Prepare loading idx
             demo.fend   = round((obj.info.fcount - obj.state.loadstart)/20);
             frames      = (obj.state.loadstart : obj.state.num_plane : demo.fend) + (obj.state.plane2read - 1);
             demo.frames = frames(frames <= demo.fend);
+            % load frame
             mobj = obj.openmdf();
             demo.raw = mdf_readframes(mobj, obj.state.motion_refchannel, demo.frames);
             delete(mobj);   % the dialog below only needs the stack, not the file
+            % determine pshift
             obj.state.xshift = mdf_pshiftexplorer(demo.raw);
         end
 
