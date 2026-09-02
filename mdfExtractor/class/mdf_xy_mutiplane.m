@@ -45,7 +45,7 @@ classdef mdf_xy_mutiplane < mdf_xymovie
         end
 
         function [obj, demo] = demoload(obj, refimgchannel, refimgplane, option)
-            %DEMOLOAD  load linspace(1,end, totalframe/20) then determine pshift
+            %DEMOLOAD  load (loadstart : num_plane : fcount/20) + plane offset then determine pshift
             arguments
                 obj
                 refimgchannel (1,1) {mustBeNumeric}

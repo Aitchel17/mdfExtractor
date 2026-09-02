@@ -123,10 +123,7 @@ classdef mdf_xymovie < mdf
         end
 
         function obj = updatestate(obj,parameters)
-            %UPDATESTATE  Move the reading window. The chunk cursor, nothing else.
-            %   What demoload and demomotion settled cannot be reached from here:
-            %   changing groupz or a filter once motion_refimg exists would leave
-            %   state describing a reference image it was not made with.
+            %UPDATESTATE  move the read window for the chunk loop - loadstart, loadend, ch2read, clamped to 1..fcount
             arguments
                 obj
                 parameters.loadstart(1,1) {mustBeNumeric} = obj.state.loadstart
@@ -190,12 +187,10 @@ classdef mdf_xymovie < mdf
 
 
         function [obj, demo] = demoload(obj, refimgchannel, option)
-            %DEMOLOAD  Read the frames the demo runs on, and settle the line phase.
-            %   The expensive half -- about 5% of the recording comes off the .mdf
-            %   here. demo.raw is left unfiltered so demomotion can be run again
-            %   with other settings without a second read.
+            %DEMOLOAD  load demoframes(loadstart, groupz) then determine pshift
             %
-            % OUT  demo.raw     H x W x T int16   as read, margins still at -2048
+            % OUT  obj          state gains motion_refchannel, groupz, xshift
+            %      demo.raw     H x W x T int16   as read, margins still at -2048
             %      demo.frames  1 x T double      the acquisition frame of each
             arguments
                 obj
@@ -214,10 +209,7 @@ classdef mdf_xymovie < mdf
         end
 
         function [obj, demo] = demomotion(obj, demo, option)
-            %DEMOMOTION  Filter the demo stack and settle the drift reference.
-            %   Seconds plus two dialogs, never a .mdf read, so it can be run again
-            %   on the same demo to see one filter setting against another.
-            %   demo.raw is not touched; the filtered copy is demo.processed.
+            %DEMOMOTION  demoprepare - draw box - estimate drift - apply - check, loop until accepted
             arguments
                 obj
                 demo
@@ -339,11 +331,7 @@ classdef mdf_xymovie < mdf
 
     methods (Access=protected)
         function frames = demoframes(obj, loadstart, groupz)
-            %DEMOFRAMES  ~5% of the recording, spread evenly, in groupz blocks.
-            %   Spread so the reference is not taken from the beginning only.
-            %   Each block is exactly groupz frames so pre_groupaverage gets
-            %   complete, aligned groups -- which is what makes slice k of the
-            %   demo stack the average of frames chunk_starts(k) .. +groupz-1.
+            %DEMOFRAMES  round(linspace(loadstart, fcount-groupz+1, fcount*0.05/groupz)) grown to whole groupz blocks
             total_frames = obj.info.fcount - loadstart + 1;
             n_chunks     = max(5, round(total_frames * 0.05 / groupz));
             chunk_starts = unique(round(linspace(loadstart, ...
@@ -354,12 +342,7 @@ classdef mdf_xymovie < mdf
 
     methods (Access=protected, Static)
         function [stack, xpadstart, xpadend] = demoprepare(stack, xshift, groupz, medfilt_size, clahe, clahe_size, wiener)
-            %DEMOPREPARE  The half of the demo that asks nothing.
-            %   demomotion and restore both run it, so the refimg restore
-            %   recomputes is the one demo would have produced.
-            %   Negatives are kept, the same as loadframes -- refimg and the frames
-            %   it is correlated against have to carry the same convention.
-            %   findpadding runs first because it looks for the -2048 fill
+            %DEMOPREPARE  pshift - findpadding (reads the -2048 fill) - crop - group average - medfilt3 - preprocstack
             stack = mdf_pshiftcorrection(stack, xshift);
             [xpadstart, xpadend] = mdf.findpadding(stack);
             stack = pre_groupaverage(stack(:, xpadstart:xpadend, :), groupz);
@@ -466,12 +449,8 @@ classdef mdf_xymovie < mdf
         end
 
         function savemotion(motiontable,motionfps,filename)
-            % public: a chunked caller builds the table over several loads and
-            % writes it once, so the write cannot sit inside getdrifttable
-            % dft_registration's four rows, in its order. They were written as
-            % yerror / xerror / ymotion / xmotion, which put an axis on the two
-            % that have none and said y,x for what are row,col -- the same
-            % confusion that cut every TIFF with the axes crossed until 2026-08-29
+            %SAVEMOTION  write dft_registration's four rows in its order. public so a chunked caller builds the table first
+            % were labelled yerror / xerror / ymotion / xmotion; see CLAUDE_LOG.md
             regerror  = mat2str(motiontable(1,:));   % sqrt(1 - |CCmax|^2/(E1*E2)), 0 = identical
             diffphase = mat2str(motiontable(2,:));   % angle(CCmax), 0 for real images
             rowshift  = mat2str(motiontable(3,:));   % the correction, not the tissue's motion
