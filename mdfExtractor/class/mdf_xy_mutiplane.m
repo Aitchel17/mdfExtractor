@@ -83,15 +83,10 @@ classdef mdf_xy_mutiplane < mdf_xymovie
             % xshift correction
             disp('Pixel shift correction')
             zstack = mdf_pshiftcorrection(zstack,obj.state.xshift);
-            % non negative
-            disp('min subtraction for non negative array')
-            zstack = zstack - min(zstack,[],'all');
         end
         
         function info = savetiff(obj)
             info = obj.info;
-            % loadframes reads every num_plane-th frame, so a stored frame is
-            % groupz * num_plane acquisition frames from the next
             info.savefps = info.fps/(obj.state.groupz * obj.state.num_plane);
             if isa(obj.info.objpix,'double')
                 save_resolution = [obj.info.objpix,obj.info.objpix,1 / info.savefps]; % [x,y,z resolution um, sec]
