@@ -8,6 +8,7 @@ classdef mdf_xy_mutiplane < mdf_xymovie
     methods
         function obj = mdf_xy_mutiplane()
             obj@mdf_xymovie();
+            obj.state.num_plane = 1;
             obj.state.plane2read = 1;
         end
 
@@ -45,7 +46,7 @@ classdef mdf_xy_mutiplane < mdf_xymovie
         end
 
         function [obj, demo] = demoload(obj, refimgchannel, refimgplane, option)
-            %DEMOLOAD  load (loadstart : num_plane : fcount/20) + plane offset then determine pshift
+            %DEMOLOAD  load demoframes(loadstart, groupz) then determine pshift
             arguments
                 obj
                 refimgchannel (1,1) {mustBeNumeric}
@@ -61,15 +62,19 @@ classdef mdf_xy_mutiplane < mdf_xymovie
             obj.state.groupz     = option.groupz;
 
             % Prepare loading idx
-            demo.fend   = round((obj.info.fcount - obj.state.loadstart)/20);
-            frames      = (obj.state.loadstart : obj.state.num_plane : demo.fend) + (obj.state.plane2read - 1);
-            demo.frames = frames(frames <= demo.fend);
+            demo.frames = obj.demoframes(obj.state.loadstart, obj.state.groupz);
             % load frame
             mobj = obj.openmdf();
             demo.raw = mdf_readframes(mobj, obj.state.motion_refchannel, demo.frames);
             delete(mobj);   % the dialog below only needs the stack, not the file
             % determine pshift
             obj.state.xshift = mdf_pshiftexplorer(demo.raw);
+        end
+
+        function info = state2info(obj)
+            info = state2info@mdf_xymovie(obj);
+            info.num_plane  = obj.state.num_plane;
+            info.plane2read = obj.state.plane2read;
         end
 
         function zstack = loadframes(obj)
@@ -105,5 +110,15 @@ classdef mdf_xy_mutiplane < mdf_xymovie
 
       
     end
-end
 
+    methods (Access=protected)
+        function frames = demoframes(obj, loadstart, groupz)
+            %DEMOFRAMES  the parent's rule over (loadstart+plane-1 : num_plane : fcount) - whole groupz blocks of one plane
+            first        = loadstart + obj.state.plane2read - 1;
+            plane_frames = first : obj.state.num_plane : obj.info.fcount;
+            n_chunks     = max(5, round(numel(plane_frames) * 0.05 / groupz));
+            chunk_starts = unique(round(linspace(1, numel(plane_frames) - groupz + 1, n_chunks)));
+            frames = reshape(plane_frames(chunk_starts(:) + (0:groupz-1))', 1, []);
+        end
+    end
+end
