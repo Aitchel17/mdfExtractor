@@ -7,14 +7,14 @@
 % keep a control open across the stages and no recording may be split in two.
 
 param.mdf_dir       = '';     % '' asks. Otherwise a folder holding the .mdf files
-param.frame_start   = 1;
+param.frame_start   = 5;      % the first frames are the scanner settling
 param.chunk_frames  = 2000;   % frames held at once, the memory ceiling (count)
 param.groupz        = 10;
 param.motion_clahe  = true;   % local contrast, drift estimate only (logical)
 param.motion_wiener = true;   % wiener2 and the low-pass after it (logical)
 param.drift_channel = 1;      % the drift is measured on this one, written first
 param.other_channel = 2;      % written after, reusing that table; 0 to skip
-param.n_worker      = 0;      % 0 = serial in this process
+param.n_worker      = 4;      % one file per worker; MCSX locks a .mdf, so that is the floor
 param.n_thread      = 6;      % computational threads per worker; n_worker x this = cores
 
 if isempty(param.mdf_dir)
@@ -36,14 +36,19 @@ for i = 1:numel(mdf_name)
 end
 
 %% Stage 2 -- no one has to be here
-if param.n_worker > 0
-    % a bare parfor opens a pool at the profile's size, not param.n_worker, and
-    % gives every worker one computational thread. NumThreads hands them back
-    cluster = parcluster('Processes');
-    cluster.NumThreads = param.n_thread;
-    delete(gcp('nocreate'));
-    parpool(cluster, param.n_worker);
+% a bare parfor opens a pool at the profile's size, not param.n_worker, and gives
+% every worker one computational thread. NumThreads hands them back
+
+% initialize parellel process worker
+pool = gcp('nocreate'); % current pool
+if isempty(pool) || pool.NumWorkers ~= param.n_worker || ... % if no pool or mismatch with setup
+        pool.Cluster.NumThreads ~= param.n_thread
+    delete(pool);            % double tap kill 
+    cluster = parcluster('Processes'); % thread can not handle mcsx independently
+    cluster.NumThreads = param.n_thread; % number of thread per process
+    parpool(cluster, param.n_worker); % distribute thread to process
 end
+
 parfor (i = 1:numel(files), param.n_worker)
     info = mdf_streamextract(files{i}, ...
         frame_start   = param.frame_start, ...
