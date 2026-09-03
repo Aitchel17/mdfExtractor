@@ -1,4 +1,4 @@
-function [tiff_handle, tagstruct] = io_savetiff_open(save_path, frame_size, n_frame, n_channel, resolution)
+function [tiff_handle, tagstruct] = io_savetiff_open(save_path, frame_size, n_frame, n_channel, resolution, unit)
 %IO_SAVETIFF_OPEN  Open a BigTIFF and settle everything that is fixed for the file.
 %   The frame count and the frame size go into the header, so both have to be known
 %   before the first frame is written. That is the whole reason a streaming writer
@@ -8,7 +8,8 @@ function [tiff_handle, tagstruct] = io_savetiff_open(save_path, frame_size, n_fr
 %      frame_size   1 x 2 double   [height width] of one frame
 %      n_frame      1 x 1 double   frames along z
 %      n_channel    1 x 1 double   channels; 1 for a 3-D stack
-%      resolution   1 x 3 double   [x_res y_res z_res], microns and seconds
+%      resolution   1 x 3 double   [x y z] step per pixel and per page
+%      unit         1 x 3 string   the unit of each, e.g. ["um" "um" "sec"]; "pixel" / "frame" when nothing is known
 % OUT  tiff_handle  1 x 1 Tiff     open for writing. The CALLER closes it
 %      tagstruct    1 x 1 struct   handed back to io_savetiff_frame unchanged
 %
@@ -21,9 +22,10 @@ function [tiff_handle, tagstruct] = io_savetiff_open(save_path, frame_size, n_fr
                    sprintf('images=%d\n', n_frame * n_channel), ...
                    sprintf('channels=%d\n', n_channel), ...
                    sprintf('frames=%d\n', n_frame), ...
-                   sprintf('unit=um\n'), ...
-                   sprintf('zunit=sec\n'), ...
-                   sprintf('spacing=%d\n', resolution(3))];
+                   sprintf('unit=%s\n', unit(1)), ...
+                   sprintf('yunit=%s\n', unit(2)), ...
+                   sprintf('zunit=%s\n', unit(3)), ...
+                   sprintf('spacing=%g\n', resolution(3))];
     disp(description);
 
     tagstruct.ImageDescription = description;
@@ -35,8 +37,16 @@ function [tiff_handle, tagstruct] = io_savetiff_open(save_path, frame_size, n_fr
     tagstruct.RowsPerStrip = frame_size(1);
     tagstruct.PlanarConfiguration = Tiff.PlanarConfiguration.Chunky;
     tagstruct.Compression = Tiff.Compression.None;
-    tagstruct.ResolutionUnit = Tiff.ResolutionUnit.Centimeter;
-    tagstruct.XResolution = 10000 / resolution(1);   % microns to cm
-    tagstruct.YResolution = 10000 / resolution(2);
+    % um goes out as pixels per cm, the way every file on disk carries it; any other
+    % unit as pixels per unit with no ResolutionUnit, the way io_postsavetiff does
+    if strcmp(unit(1), "um")
+        tagstruct.ResolutionUnit = Tiff.ResolutionUnit.Centimeter;
+        tagstruct.XResolution = 10000 / resolution(1);
+        tagstruct.YResolution = 10000 / resolution(2);
+    else
+        tagstruct.ResolutionUnit = Tiff.ResolutionUnit.None;
+        tagstruct.XResolution = 1 / resolution(1);
+        tagstruct.YResolution = 1 / resolution(2);
+    end
     tagstruct.Software = 'MATLAB';
 end

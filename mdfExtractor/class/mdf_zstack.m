@@ -11,13 +11,10 @@ classdef mdf_zstack < mdf
             if  strcmp(obj.info.scanmode,'XY Movie') == 1
                 disp('use mdf_xymovie class')
             end
-            try
-                frames   = obj.state.loadstart : obj.state.loadend;
-                rawzstack = mdf_readframes(obj.mobj, obj.state.ch2read, frames);
-            catch
-                frames   = obj.state.loadstart : obj.state.loadend;
-                rawzstack = mdf_readframes(obj.mobj, obj.state.ch2read, frames);
-            end
+            mobj = obj.openmdf();
+            frames = obj.state.loadstart : obj.state.loadend;
+            rawzstack = mdf_readframes(mobj, obj.state.ch2read, frames);
+            delete(mobj);
 
             [obj.state.xpadstart, obj.state.xpadend] = mdf.findpadding(rawzstack);
         end

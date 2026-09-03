@@ -107,6 +107,29 @@ classdef mdf
             delete(mobj);
         end
 
+        function obj = updatestate(obj,parameters)
+            %UPDATESTATE  move the read window for the chunk loop - loadstart, loadend, ch2read, clamped to 1..fcount
+            arguments
+                obj
+                parameters.loadstart(1,1) {mustBeNumeric} = obj.state.loadstart
+                parameters.loadend(1,1) {mustBeNumeric}   = obj.state.loadend
+                parameters.ch2read (1,1) {mustBeNumeric}  = obj.state.ch2read
+            end
+
+            obj.state.ch2read   = parameters.ch2read;
+            obj.state.loadstart = parameters.loadstart;
+            obj.state.loadend   = parameters.loadend;
+
+            if obj.state.loadend > obj.info.fcount % beyond the last frame, read to the end
+                disp('Duration exceed total frame, loadend set to the end')
+                obj.state.loadend = obj.info.fcount;
+            end
+            if obj.state.loadstart < 1
+                disp('frame start should above 1')
+                obj.state.loadstart = 1;
+            end
+        end
+
         function logic = showstack(obj)
             logic = mdf.checkstack(obj.stack);
         end
@@ -114,19 +137,35 @@ classdef mdf
         function info = savetiff(obj)
             info = obj.info;
             info.savefps = info.fps/obj.state.groupz;
-            %%
-            if strcmp(obj.info.scanmode,'Image Stack')
-                info.savefps = str2double(obj.info.zinter(1:end-2));
-            end
-
-            if isa(info.objpix,'double')
-                save_resolution = [info.objpix,info.objpix,1 / info.savefps]; % [x,y,z resolution um, sec]
-            else
-                save_resolution = [str2double(info.objpix(1:end-2)),str2double(info.objpix(1:end-2)),1 / info.savefps]; % [x,y,z resolution um, sec]
+            switch info.scanmode
+                case 'XY Movie'
+                    if isa(info.objpix, 'double')
+                        xy_step = info.objpix;                      % um
+                    else
+                        xy_step = str2double(info.objpix(1:end-2)); % um
+                    end
+                    z_step = 1 / info.savefps;                      % sec between frames
+                    save_resolution = [xy_step, xy_step, z_step];
+                    xy_unit = 'um';
+                    z_unit = 'sec';
+                case 'Image Stack'
+                    if isa(info.objpix, 'double')
+                        xy_step = info.objpix;                      % um
+                    else
+                        xy_step = str2double(info.objpix(1:end-2)); % um
+                    end
+                    z_step = str2double(info.zinter(1:end-2));      % um between planes
+                    save_resolution = [xy_step, xy_step, z_step];
+                    xy_unit = 'um';
+                    z_unit = 'um';
+                otherwise
+                    save_resolution = [1, 1, 1];                    % one per pixel and per page, nothing else known
+                    xy_unit = 'pixel';
+                    z_unit = 'frame';
             end
             % Construct full file path
             save_path = fullfile(obj.state.save_folder, [info.mdfName(1:end-4),sprintf('_ch%d.tif',obj.state.ch2read)]);
-            io_savetiff(obj.stack, save_path, save_resolution)
+            io_savetiff(obj.stack, save_path, save_resolution, xy_unit, z_unit)
         end
 
         function saveinfo(obj)
