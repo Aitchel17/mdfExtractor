@@ -6,7 +6,7 @@ function io_savetiff(zstack, save_path, resolution, unit)
 %   only place the 3-D / 4-D distinction lives.
 %
 % IN   zstack      H x W x Z or H x W x Z x C numeric
-%      save_path   1 x 1 char     where the TIFF goes
+%      save_path   1 x n char     where the TIFF goes
 %      resolution  1 x 3 double   [x y z] step per pixel and per page
 %      unit        1 x 3 string   the unit of each, e.g. ["um" "um" "sec"]; "pixel" / "frame" when nothing is known
     is4D = ndims(zstack) == 4;

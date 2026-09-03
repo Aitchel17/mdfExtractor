@@ -146,8 +146,7 @@ classdef mdf
                     end
                     z_step = 1 / info.savefps;                      % sec between frames
                     save_resolution = [xy_step, xy_step, z_step];
-                    xy_unit = 'um';
-                    z_unit = 'sec';
+                    save_unit = ["um" "um" "sec"];
                 case 'Image Stack'
                     if isa(info.objpix, 'double')
                         xy_step = info.objpix;                      % um
@@ -156,16 +155,14 @@ classdef mdf
                     end
                     z_step = str2double(info.zinter(1:end-2));      % um between planes
                     save_resolution = [xy_step, xy_step, z_step];
-                    xy_unit = 'um';
-                    z_unit = 'um';
+                    save_unit = ["um" "um" "um"];
                 otherwise
                     save_resolution = [1, 1, 1];                    % one per pixel and per page, nothing else known
-                    xy_unit = 'pixel';
-                    z_unit = 'frame';
+                    save_unit = ["pixel" "pixel" "frame"];
             end
             % Construct full file path
             save_path = fullfile(obj.state.save_folder, [info.mdfName(1:end-4),sprintf('_ch%d.tif',obj.state.ch2read)]);
-            io_savetiff(obj.stack, save_path, save_resolution, xy_unit, z_unit)
+            io_savetiff(obj.stack, save_path, save_resolution, save_unit)
         end
 
         function saveinfo(obj)

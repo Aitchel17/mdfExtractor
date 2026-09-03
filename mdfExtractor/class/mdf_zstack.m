@@ -1,13 +1,12 @@
 classdef mdf_zstack < mdf
-    %UNTITLED Summary of this class goes here
-    %   Detailed explanation goes here
+    % mdf_zstack load
     
     properties
     end
     
     methods
-        function obj = mdf_zstack(pathlist)
-            obj@mdf(pathlist);
+        function obj = mdf_zstack(mdfpath)
+            obj@mdf(mdfpath);
             if  strcmp(obj.info.scanmode,'XY Movie') == 1
                 disp('use mdf_xymovie class')
             end
