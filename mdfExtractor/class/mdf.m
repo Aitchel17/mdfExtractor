@@ -1,12 +1,12 @@
 classdef mdf
-    % Make mdffile connection using 
+    %MDF  One .mdf as an object: info off MCSX, the read window as state, loadframes by chunk
     properties
         info
-        stack
+        stack                       % H x W x n      what loadframes read, then each stage's result
     end
 
-    % the reading window is a cursor mdf_streamextract moves per chunk, and the
-    % rest is what demoload and demomotion settled. Both belong to the methods
+    % loadstart / loadend / ch2read are the window a writer records and a script sets
+    % with updatestate; the rest is what demoload and demomotion settled
     properties (SetAccess = protected)
         state = struct( ...
             'loadstart', 1,...
@@ -15,11 +15,10 @@ classdef mdf
     end
 
     methods
-        function obj = mdf(paths,objective,wavelength)
+        function obj = mdf(paths)
+            %MDF  where the .mdf is and where its products go; init reads the rest
             arguments
                 paths = [];
-                objective = true;
-                wavelength = 0;
             end
             % 0. Get mdf path to open
             if isempty(paths)
@@ -34,6 +33,21 @@ classdef mdf
             end
             obj.info.mdfName = mdfName;
             obj.info.mdfPath = mdfPath;
+            % Saving folder path
+            obj.state.save_folder = fullfile(obj.info.mdfPath, obj.info.mdfName(1:end-4));
+            if ~exist(obj.state.save_folder, 'dir')
+                mkdir(obj.state.save_folder);
+            end
+        end
+
+        function obj = init(obj, objective, wavelength)
+            %INIT  the 2P parameters off MCSX into info, and the read window they imply into state
+            %   Caller: mdf_xymovie constructor, mdf_zstack constructor
+            arguments
+                obj
+                objective = true;      % false discards the recorded objective and asks
+                wavelength = 0;        % > 0 overrides the recorded excitation
+            end
             % 1. open mdf
             mobj = obj.openmdf();
             % 2. gather information
@@ -45,12 +59,14 @@ classdef mdf
             fprintf('%s %s is loaded\n', obj.info.scanmode, obj.info.mdfName);
             % 4. default setup
             obj.state.loadend = obj.info.fcount; % read to end
-            % Saving folder path
-            obj.state.save_folder = fullfile(obj.info.mdfPath, obj.info.mdfName(1:end-4));
             obj.state.xpadstart = 1; % no left crop
             obj.state.xpadend = obj.info.fwidth; % no right crop
             obj.state.xshift = 0; % no pixel shift
             obj.state.groupz = 1; % no frame averaging
+            % the read loop: where the read is, how long one read is, and the open writer
+            obj.state.currentframe = obj.state.loadstart;
+            obj.state.readlength = obj.info.fcount;   % one read is the whole recording until set
+            obj.state.tiff = [];
             % 5. complete imaging parameter
             if ~objective
                 obj.info.objname = '<Unknown Objective>';
@@ -61,65 +77,26 @@ classdef mdf
             if strcmp(obj.info.objname , '<Unknown Objective>')
                 disp('Objective information is missing')
                 [obj.info.objname, obj.info.objpix] = mdf_objectiveselector();
-                obj.info.objpix = obj.info.objpix/str2double(obj.info.zoom(1:end-1));
+                obj.info.objpix = obj.info.objpix/util_unit2double(obj.info.zoom);
             end
-            if ~exist(obj.state.save_folder, 'dir')
-                mkdir(obj.state.save_folder);
-            end
-                end
-
-
-        function zstack = loadframes(obj)
-            % 0. Set which frames to read
-            frames      = obj.state.loadstart : obj.state.loadend;
-            n_frame     = numel(frames);
-            % 1. Calculate chunk number from chunk size
-            chunk_megabytes = 256;       % too small (overhead) or big chunk (big array modification)
-            pixel_megabytes = 2 / 1e6;   % int16
-            frame_megabytes = obj.info.fheight * obj.info.fwidth * pixel_megabytes;
-            chunk_frames    = max(1, floor(chunk_megabytes / frame_megabytes));
-            chunk_frames    = min(chunk_frames, n_frame);
-            n_chunk         = ceil(n_frame / chunk_frames);
-            % 2. open .mdf file
-            mobj = obj.openmdf();
-            % 3. Chunk run load - pad removal - pshift correction
-            %    Negatives are kept. The PMT baseline sits near 0 and the noise
-            %    swings both ways, so clipping here and then averaging rectifies:
-            %    measured, it lifts a dim pixel by 97 counts and a bright one by 4
-            zstack = [];   % h x w x n_frame, allocated once the corrected width is known
-            for chunk_idx = 1:n_chunk
-                frame_idx = (chunk_idx-1)*chunk_frames + 1 : min(chunk_idx*chunk_frames, n_frame); % 3.0 make idx array
-                chunk = mdf_readframes(mobj, obj.state.ch2read, frames(frame_idx)); % 3.1 read frame
-                chunk = chunk(:, obj.state.xpadstart:obj.state.xpadend, :); % 3.2 pad removal
-                % 3.3 pshift correction
-                if obj.state.xshift ~= 0
-                    chunk = mdf_pshiftcorrection(chunk, obj.state.xshift);
-                end
-
-                if isempty(zstack)
-                    [h, w, ~] = size(chunk);
-                    zstack = zeros(h, w, n_frame, 'like', chunk);
-                end
-                zstack(:, :, frame_idx) = chunk; %#ok<AGROW> preallocated above
-                fprintf('%.2f%% loaded\n', frame_idx(end) * 100 / n_frame);
-            end
-            % 3. close the connection
-            delete(mobj);
         end
 
-        function obj = updatestate(obj,parameters)
-            %UPDATESTATE  move the read window for the chunk loop - loadstart, loadend, ch2read, clamped to 1..fcount
+        function obj = updatestate(obj, parameters)
+            %UPDATESTATE  the window, the read length and the read position, as a script asks
+            %   loadend is clamped to the recording; loadend and readlength are then trimmed to
+            %   whole groupz blocks
             arguments
                 obj
-                parameters.loadstart(1,1) {mustBeNumeric} = obj.state.loadstart
-                parameters.loadend(1,1) {mustBeNumeric}   = obj.state.loadend
-                parameters.ch2read (1,1) {mustBeNumeric}  = obj.state.ch2read
+                parameters.loadstart    (1,1) {mustBeNumeric} = obj.state.loadstart
+                parameters.loadend      (1,1) {mustBeNumeric} = obj.state.loadend
+                parameters.ch2read      (1,1) {mustBeNumeric} = obj.state.ch2read
+                parameters.readlength   (1,1) {mustBeNumeric} = obj.state.readlength
+                parameters.currentframe (1,1) {mustBeNumeric} = obj.state.currentframe
             end
-
-            obj.state.ch2read   = parameters.ch2read;
-            obj.state.loadstart = parameters.loadstart;
-            obj.state.loadend   = parameters.loadend;
-
+            obj.state.ch2read      = parameters.ch2read;
+            obj.state.loadstart    = parameters.loadstart;
+            obj.state.loadend      = parameters.loadend;
+            obj.state.currentframe = parameters.currentframe;
             if obj.state.loadend > obj.info.fcount % beyond the last frame, read to the end
                 disp('Duration exceed total frame, loadend set to the end')
                 obj.state.loadend = obj.info.fcount;
@@ -128,41 +105,61 @@ classdef mdf
                 disp('frame start should above 1')
                 obj.state.loadstart = 1;
             end
+            n_group = floor((obj.state.loadend - obj.state.loadstart + 1) / obj.state.groupz);
+            obj.state.loadend = obj.state.loadstart + n_group * obj.state.groupz - 1;
+            n_readgroup = floor(parameters.readlength / obj.state.groupz);
+            obj.state.readlength = n_readgroup * obj.state.groupz;
         end
 
-        function logic = showstack(obj)
-            logic = mdf.checkstack(obj.stack);
+        function obj = opentiff(obj)
+            %OPENTIFF  the writer savetiff appends to, held until closetiff: <name>_ch<ch2read>.tif
+            tif_path = fullfile(obj.state.save_folder, ...
+                sprintf('%s_ch%d.tif', obj.info.mdfName(1:end-4), obj.state.ch2read));
+            obj.state.tiff = Tiff(tif_path, 'w8');
         end
 
-        function info = savetiff(obj)
-            info = obj.info;
-            info.savefps = info.fps/obj.state.groupz;
-            switch info.scanmode
-                case 'XY Movie'
-                    if isa(info.objpix, 'double')
-                        xy_step = info.objpix;                      % um
-                    else
-                        xy_step = str2double(info.objpix(1:end-2)); % um
-                    end
-                    z_step = 1 / info.savefps;                      % sec between frames
-                    save_resolution = [xy_step, xy_step, z_step];
-                    save_unit = ["um" "um" "sec"];
-                case 'Image Stack'
-                    if isa(info.objpix, 'double')
-                        xy_step = info.objpix;                      % um
-                    else
-                        xy_step = str2double(info.objpix(1:end-2)); % um
-                    end
-                    z_step = str2double(info.zinter(1:end-2));      % um between planes
-                    save_resolution = [xy_step, xy_step, z_step];
-                    save_unit = ["um" "um" "um"];
-                otherwise
-                    save_resolution = [1, 1, 1];                    % one per pixel and per page, nothing else known
-                    save_unit = ["pixel" "pixel" "frame"];
+        function stack = loadframes(obj)
+            %LOADFRAMES  the frames readwindow names: read - pad crop - pshift, on a control opened for it
+            %
+            % OUT  stack  H x W x n int16   margins cut, negatives kept
+            [~, ~, read_start, read_stop] = obj.readwindow();
+            mobj  = obj.openmdf();
+            stack = mdf_readframes(mobj, obj.state.ch2read, read_start:read_stop);
+            delete(mobj);
+            stack = stack(:, obj.state.xpadstart:obj.state.xpadend, :);
+            if obj.state.xshift ~= 0
+                stack = mdf_pshiftcorrection(stack, obj.state.xshift);
             end
-            % Construct full file path
-            save_path = fullfile(obj.state.save_folder, [info.mdfName(1:end-4),sprintf('_ch%d.tif',obj.state.ch2read)]);
-            io_savetiff(obj.stack, save_path, save_resolution, save_unit)
+        end
+
+        function savetiff(obj)
+            %SAVETIFF  obj.stack onto the open writer, at the pages this read owns
+            [own_start, ~, ~, ~] = obj.readwindow();
+            n_page     = (obj.state.loadend - obj.state.loadstart + 1) / obj.state.groupz;
+            first_page = (own_start - obj.state.loadstart) / obj.state.groupz + 1;
+            n_own      = size(obj.stack, 3);
+            tags = obj.label_tiftag(n_page, [size(obj.stack, 1), size(obj.stack, 2)]);
+            for k = 1:n_own
+                writepage(obj.state.tiff, tags, first_page + k - 1, ...
+                    touint16(obj.stack(:, :, k)));
+            end
+            fprintf('%s ch%d: pages %d-%d of %d\n', obj.info.mdfName(1:end-4), ...
+                obj.state.ch2read, first_page, first_page + n_own - 1, n_page);
+        end
+
+        function obj = closetiff(obj)
+            %CLOSETIFF  the writer opentiff held
+            obj.state.tiff.close();
+            obj.state.tiff = [];
+        end
+
+        function info = state2info(obj)
+            %STATE2INFO  the window and the page rate onto info, for saveinfo
+            info = obj.info;
+            info.loadstart = obj.state.loadstart;
+            info.loadend   = obj.state.loadend;
+            info.groupz    = obj.state.groupz;
+            info.savefps   = obj.info.fps / obj.state.groupz;
         end
 
         function saveinfo(obj)
@@ -185,6 +182,36 @@ classdef mdf
             % return mobj, connected with .mdf by ActiveX
             mobj = actxserver('MCSX.Data');
             mobj.OpenMCSFile(fullfile(obj.info.mdfPath, obj.info.mdfName));
+        end
+
+        function [own_start, own_stop, read_start, read_stop] = readwindow(obj)
+            %READWINDOW  the frames this read owns; here the load is the same span
+            own_start  = obj.state.currentframe;
+            own_stop   = min(own_start + obj.state.readlength - 1, obj.state.loadend);
+            read_start = own_start;
+            read_stop  = own_stop;
+        end
+
+        function tags = label_tiftag(obj, n_page, frame_size)
+            %LABEL_TIFTAG  a page's tags: the xy scale off objpix, the page axis off the child's pageaxis
+            %   Caller: mdf.savetiff
+            %
+            % IN   n_page      1 x 1 double   pages the file will hold
+            %      frame_size  1 x 2 double   [height width] of one page
+            % OUT  tags        1 x 1 struct   for Tiff.setTag
+            [unit, page_keys, page_step] = obj.pageaxis();
+            xy_step = util_unit2double(obj.info.objpix);       % um per pixel
+            pixel_density = [10000 / xy_step, 10000 / xy_step];   % pixels per cm
+            description = imagejblock(n_page, 1, unit, page_keys, page_step);
+            tags = tiftag(description, pixel_density, Tiff.ResolutionUnit.Centimeter);
+            tags.ImageLength = frame_size(1);
+            tags.ImageWidth = frame_size(2);
+            tags.RowsPerStrip = frame_size(1);
+        end
+
+        function [unit, page_keys, page_step] = pageaxis(obj) %#ok<STOUT>
+            %PAGEAXIS  what one page step is: a child's answer (mdf_xymovie: time, mdf_zstack: depth)
+            error('mdf:pageaxis', '%s has no page axis of its own; mdf_xymovie or mdf_zstack has', class(obj));
         end
     end
 
@@ -263,7 +290,6 @@ classdef mdf
                 hAxes.CLim = range; % Adjust display range
             end
 
-
             % Function to reset ROI
             function confirm()
                 state = hStack.SliceNumber; % Set the reset flag
@@ -273,3 +299,81 @@ classdef mdf
     end
 end
 
+function description = imagejblock(n_frame, n_channel, unit, page_keys, page_step)
+    %IMAGEJBLOCK  the ImageDescription lines ImageJ reads, as one char row
+    %
+    % IN   n_frame      1 x 1 double   pages along the page axis
+    %      n_channel    1 x 1 double   channels
+    %      unit         1 x 3 string   the unit of x, y and the page axis
+    %      page_keys    1 x 2 string   what ImageJ calls the page count and the page
+    %                                  step: ["slices" "spacing"] for a depth axis,
+    %                                  ["frames" "finterval"] for a time axis
+    %      page_step    1 x 1 double   one page in unit(3)
+    % OUT  description  1 x n char
+    %
+    %   Every line needs its own newline. The page axis is the one thing here a scan
+    %   mode decides, and it arrives as page_keys rather than being guessed from unit.
+    description = [sprintf('ImageJ=1.54f\n'), ...
+                   sprintf('images=%d\n', n_frame * n_channel), ...
+                   sprintf('channels=%d\n', n_channel), ...
+                   sprintf('%s=%d\n', page_keys(1), n_frame), ...
+                   sprintf('unit=%s\n', unit(1)), ...
+                   sprintf('yunit=%s\n', unit(2)), ...
+                   sprintf('zunit=%s\n', unit(3)), ...
+                   sprintf('%s=%g\n', page_keys(2), page_step)];
+end
+
+function tags = tiftag(description, pixel_density, resolution_unit)
+    %TIFTAG  every tag a page of these TIFFs carries but its own size
+    %
+    % IN   description      1 x n char     from imagejblock, or another file's
+    %      pixel_density    1 x 2 double   pixels per resolution_unit, [x y]. TIFF
+    %                                      stores the reciprocal of a pixel's size,
+    %                                      so um per pixel arrives here as 10000/um
+    %      resolution_unit  1 x 1          Tiff.ResolutionUnit.*, or the numeric code
+    %                                      getTag hands back
+    % OUT  tags             1 x 1 struct   for Tiff.setTag; the caller adds the size
+    tags.ImageDescription = description;
+    tags.Photometric = Tiff.Photometric.MinIsBlack;
+    tags.BitsPerSample = 16;
+    tags.SamplesPerPixel = 1;
+    tags.PlanarConfiguration = Tiff.PlanarConfiguration.Chunky;
+    tags.Compression = Tiff.Compression.None;
+    tags.ResolutionUnit = resolution_unit;
+    tags.XResolution = pixel_density(1);
+    tags.YResolution = pixel_density(2);
+    tags.Software = 'MATLAB';
+end
+
+function writepage(handle, tags, page, frame)
+    %WRITEPAGE  one page onto an open TIFF
+    %
+    % IN   handle  1 x 1 Tiff      open for writing
+    %      tags    1 x 1 struct    set on every page, size included
+    %      page    1 x 1 double    which page of the FILE this is, 1-based
+    %      frame   H x W uint16
+    %
+    %   The directory goes in FRONT of every page but the first, so nothing needs to
+    %   know how many pages are coming and the file ends without a trailing empty one.
+    if page > 1
+        handle.writeDirectory();
+    end
+    handle.setTag(tags);
+    handle.write(frame);
+end
+
+function frame = touint16(frame)
+    %TOUINT16  a frame as MCSX gives it, in the container a TIFF page takes
+    %
+    % IN   frame  H x W numeric   signed 12-bit, or a mean of it; uint16 passes through
+    % OUT  frame  H x W uint16
+    %
+    %   +2048 makes signed 12-bit unsigned and 4 bits of the container are left over,
+    %   which is what carries the fraction a groupz-frame mean has.
+    if isa(frame, 'uint16')
+        return
+    end
+    frame = double(frame);
+    frame = (frame + 2048) / 4096 * 65535;
+    frame = uint16(frame);
+end
