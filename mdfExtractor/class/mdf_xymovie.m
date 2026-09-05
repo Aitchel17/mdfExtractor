@@ -12,16 +12,6 @@ classdef mdf_xymovie < mdf
             end
             obj@mdf(paths);   % initialize by parent
             obj = obj.init();
-            % default option
-            obj.state.groupz = 10;
-            obj.state.xpadstart = 1;
-            obj.state.xpadend = obj.info.fwidth;
-            obj.state.xshift = 0;
-            % default motion parameters
-            obj.state.motion_medfilt = [3, 3, 5];   % 1 x 3, medfilt3 window [xy xy z]
-            obj.state.motion_clahe = false;
-            obj.state.motion_clahe_size = 64;      % CLAHE tile side (px)
-            obj.state.motion_wiener = false;       % wiener2 and the low-pass after it
         end
 
         function info = state2info(obj)
@@ -217,14 +207,19 @@ classdef mdf_xymovie < mdf
                 obj.state.motion_clahe_size, obj.state.motion_wiener);
         end
 
-        function [own_start, own_stop, read_start, read_stop] = readwindow(obj)
-            %READWINDOW  the parent's own span, loaded with one group more each side than medfilt3 reaches
-            %   medfilt3 reaches floor(z/2) pages either way and the interpolation reads one
-            %   page beyond, so the load carries one more group than that on both sides.
-            [own_start, own_stop] = readwindow@mdf(obj);
-            overlap    = (floor(obj.state.motion_medfilt(3) / 2) + 1) * obj.state.groupz;
-            read_start = max(obj.state.loadstart, own_start - overlap);
-            read_stop  = min(obj.state.loadend,   own_stop  + overlap);
+        function overlap = overlapframes(obj)
+            %OVERLAPFRAMES  one group more each side than medfilt3 reaches, so the interpolation has a page beyond
+            overlap = (floor(obj.state.motion_medfilt(3) / 2) + 1) * obj.state.groupz;
+        end
+
+        function obj = defaultstate(obj)
+            %DEFAULTSTATE  the parent's, then ten frames a page and the drift estimate's filters, off
+            obj = defaultstate@mdf(obj);
+            obj.state.groupz = 10;
+            obj.state.motion_medfilt = [3, 3, 5];   % 1 x 3, medfilt3 window [xy xy z]
+            obj.state.motion_clahe = false;
+            obj.state.motion_clahe_size = 64;      % CLAHE tile side (px)
+            obj.state.motion_wiener = false;       % wiener2 and the low-pass after it
         end
 
         function [unit, page_keys, page_step] = pageaxis(obj)

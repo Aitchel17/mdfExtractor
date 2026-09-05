@@ -57,12 +57,9 @@ classdef mdf
             % name and path stay first, so _info.txt opens with which file it is
             obj.info = util_mergestruct(obj.info, read_info);
             fprintf('%s %s is loaded\n', obj.info.scanmode, obj.info.mdfName);
-            % 4. default setup
+            % 4. the window this recording implies, then the correction defaults the child may set
             obj.state.loadend = obj.info.fcount; % read to end
-            obj.state.xpadstart = 1; % no left crop
-            obj.state.xpadend = obj.info.fwidth; % no right crop
-            obj.state.xshift = 0; % no pixel shift
-            obj.state.groupz = 1; % no frame averaging
+            obj = obj.defaultstate();
             % the read loop: where the read is, how long one read is, and the open writer
             obj.state.currentframe = obj.state.loadstart;
             obj.state.readlength = obj.info.fcount;   % one read is the whole recording until set
@@ -185,11 +182,25 @@ classdef mdf
         end
 
         function [own_start, own_stop, read_start, read_stop] = readwindow(obj)
-            %READWINDOW  the frames this read owns; here the load is the same span
+            %READWINDOW  the frames this read owns, and the span loaded for them: own plus overlapframes each side
             own_start  = obj.state.currentframe;
             own_stop   = min(own_start + obj.state.readlength - 1, obj.state.loadend);
-            read_start = own_start;
-            read_stop  = own_stop;
+            overlap    = obj.overlapframes();
+            read_start = max(obj.state.loadstart, own_start - overlap);
+            read_stop  = min(obj.state.loadend,   own_stop  + overlap);
+        end
+
+        function overlap = overlapframes(obj) %#ok<MANU>
+            %OVERLAPFRAMES  frames loaded beyond the own span on each side; a child that filters across frames answers more
+            overlap = 0;
+        end
+
+        function obj = defaultstate(obj)
+            %DEFAULTSTATE  the correction state before any QC settles it; a child overrides to add its own
+            obj.state.xpadstart = 1;               % no left crop
+            obj.state.xpadend   = obj.info.fwidth; % no right crop
+            obj.state.xshift    = 0;               % no pixel shift
+            obj.state.groupz    = 1;               % no frame averaging
         end
 
         function tags = label_tiftag(obj, n_page, frame_size)
