@@ -1,6 +1,5 @@
 classdef mdf_xy_mutiplane < mdf_xymovie
-    %UNTITLED2 Summary of this class goes here
-    %   Detailed explanation goes here
+    %MDF_XY_MUTIPLANE  An XY Movie interleaving num_plane planes; no writer yet
     
     properties
     end
@@ -76,44 +75,11 @@ classdef mdf_xy_mutiplane < mdf_xymovie
             info.num_plane  = obj.state.num_plane;
             info.plane2read = obj.state.plane2read;
         end
-
-        function zstack = loadframes(obj)
-            frames = (obj.state.loadstart : obj.state.num_plane : obj.state.loadend) + (obj.state.plane2read - 1);
-            frames = frames(frames <= obj.state.loadend);
-            mobj = obj.openmdf();
-            zstack = mdf_readframes(mobj, obj.state.ch2read, frames);
-            delete(mobj);
-            disp('Padding removal')
-            zstack = zstack(:,obj.state.xpadstart:obj.state.xpadend,:);
-            % xshift correction
-            disp('Pixel shift correction')
-            zstack = mdf_pshiftcorrection(zstack,obj.state.xshift);
-        end
-        
-        function info = savetiff(obj)
-            info = obj.info;
-            info.savefps = info.fps/(obj.state.groupz * obj.state.num_plane);
-            if isa(obj.info.objpix,'double')
-                save_resolution = [obj.info.objpix,obj.info.objpix,1 / info.savefps]; % [x,y,z resolution um, sec]
-            else
-                save_resolution = [str2double(obj.info.objpix(1:end-2)),str2double(obj.info.objpix(1:end-2)),1 / info.savefps]; % [x,y,z resolution um, sec]
-            end
-            % Construct full file path
-            save_path = fullfile(obj.state.save_folder, [obj.info.mdfName(1:end-4),sprintf('_ch%d.tif',obj.state.ch2read)]);
-
-            if obj.state.num_plane ~= 1
-                save_path = fullfile(obj.state.save_folder, [obj.info.mdfName(1:end-4),sprintf('_ch%dplane%d_%d.tif',obj.state.ch2read,obj.state.num_plane,obj.state.plane2read)]);
-            end
-            % save
-            io_savetiff(obj.stack, save_path, save_resolution)
-        end
-
-      
     end
 
     methods (Access=protected)
         function frames = demoframes(obj, loadstart, groupz)
-            %DEMOFRAMES  the parent's rule over (loadstart+plane-1 : num_plane : fcount) - whole groupz blocks of one plane
+            %DEMOFRAMES  the parent's rule over one plane: loadstart+plane-1 : num_plane : fcount
             first        = loadstart + obj.state.plane2read - 1;
             plane_frames = first : obj.state.num_plane : obj.info.fcount;
             n_chunks     = max(5, round(numel(plane_frames) * 0.05 / groupz));

@@ -1,11 +1,8 @@
 classdef mdf_xymovie < mdf
-    %MDF_ Summary of this class goes here
-    %   Detailed explanation goes here
+    %MDF_XYMOVIE  An XY Movie, drift corrected on the way to disk
 
     properties
-        analog
-        drifttable
-        behavior
+        drifttable = zeros(4, 0)    % 4 x n_page     dft_registration rows, one column per page
     end
 
     methods
@@ -13,178 +10,57 @@ classdef mdf_xymovie < mdf
             arguments
                 paths = [];
             end
-            obj@mdf(paths);   % initialize by parent          
-            mobj = obj.openmdf();   % open mdf
-            [obj.analog.data, obj.analog.info] = mdf_readanalog(mobj); % read analog
-            delete(mobj); % close mdf
-            % default reading  option
+            obj@mdf(paths);   % initialize by parent
+            obj = obj.init();
+            % default option
             obj.state.groupz = 10;
             obj.state.xpadstart = 1;
             obj.state.xpadend = obj.info.fwidth;
             obj.state.xshift = 0;
+            % default motion parameters
             obj.state.motion_medfilt = [3, 3, 5];   % 1 x 3, medfilt3 window [xy xy z]
-            % the three below feed the drift estimate only; the shifts are applied
-            % to the raw stack, so nothing filtered by them reaches a stored pixel
             obj.state.motion_clahe = false;
             obj.state.motion_clahe_size = 64;      % CLAHE tile side (px)
             obj.state.motion_wiener = false;       % wiener2 and the low-pass after it
-            % save analog
-            analogfilename = fullfile(obj.state.save_folder, [obj.info.mdfName(1:end-4),'_analog.txt']);
-            mdf_xymovie.saveanalog(obj.analog,analogfilename)
         end
 
-        function obj = loadbehavior(obj)
-            mobj = obj.openmdf();
-            if strcmp(mobj.ReadParameter('Video Enabled'),'-1')
-                disp('Behavior camera enable = -1 , loading behavior data')
-                obj.behavior = mdf_xymovie.behaviorinfo(mobj);
-                obj.info.behavior_enable = 1;
-            else
-                disp('Behavior camera enable = 0 , check .mdf file')
-                obj.info.behavior_enable = 0;
-            end
-            delete(mobj);
+        function info = state2info(obj)
+            %STATE2INFO  the parent's window and page rate, then what demoload and demomotion settled
+            info = state2info@mdf(obj);
+            info.xshift            = obj.state.xshift;
+            info.motion_refframes  = strjoin(string(obj.state.motion_refframes));   % first and last frame
+            info.motion_refchannel = obj.state.motion_refchannel;
+            info.motion_vertices   = strjoin(string(reshape(obj.state.motion_vertices', 1, [])));   % by rows
+            info.motion_medfilt    = strjoin(string(obj.state.motion_medfilt));   % writetable wants a scalar
+            info.motion_clahe      = obj.state.motion_clahe;
+            info.motion_clahe_size = obj.state.motion_clahe_size;
+            info.motion_wiener     = obj.state.motion_wiener;
         end
 
-        function savebehavior(obj)
-            if obj.info.behavior_enable
-                disp('saving behavior')
-                mobj = obj.openmdf();
-                v1 = VideoWriter(fullfile(obj.info.mdfPath, obj.info.mdfName(1:end-4), "eye.avi"),'Grayscale AVI');
-                v1.FrameRate = 30.9;
-                v2 = VideoWriter(fullfile(obj.info.mdfPath, obj.info.mdfName(1:end-4), "whisker.avi"),'Grayscale AVI');
-                v2.FrameRate = 30.9;
-                open(v1);
-                open(v2);
-                for idx = 1:str2double(obj.behavior.fcount)
-                    frame = uint8(mod(double(mobj.ReadVideoFrame(idx)'),256));
-                    writeVideo(v1,frame(obj.behavior.eyevertices(1,2):obj.behavior.eyevertices(3,2), obj.behavior.eyevertices(1,1):obj.behavior.eyevertices(3,1)))
-                    writeVideo(v2,frame(obj.behavior.whiskervertices(1,2):obj.behavior.whiskervertices(3,2), obj.behavior.whiskervertices(1,1):obj.behavior.whiskervertices(3,1)))
-                end
-                delete(mobj);
-                close(v1);
-                close(v2);
-                disp('behavior data saved')
-            else
-                disp('behavior disabled')
-            end
+        function obj = info2state(obj, saved)
+            %INFO2STATE  state2info's inverse: the demo and motion fields typed back out of a loaded info
+            %   Caller: mdf_xymovie.restore
+            %
+            % IN   saved  1 x 1 struct   from io_loadinfo, every value the char it was written as
+            % OUT  obj                   state gains groupz, motion_refchannel (ch2read with it),
+            %                            motion_refframes, xshift, motion_medfilt, motion_clahe,
+            %                            motion_clahe_size, motion_wiener, motion_vertices.
+            %                            loadstart / loadend stay: the window is the script's to set
+            obj.state.groupz            = str2double(saved.groupz);
+            obj.state.motion_refchannel = str2double(saved.motion_refchannel);
+            obj.state.ch2read           = obj.state.motion_refchannel;
+            obj.state.motion_refframes  = str2num(saved.motion_refframes); %#ok<ST2NM> 1 x 2
+            obj.state.xshift            = str2double(saved.xshift);
+            % the four below entered state after most of the tree was extracted; the
+            % default is what that extraction ran with
+            obj.state.motion_medfilt    = str2num(infofield(saved, 'motion_medfilt', '3 3 5')); %#ok<ST2NM> 1 x 3
+            obj.state.motion_clahe      = logical(str2double(infofield(saved, 'motion_clahe', '0')));
+            obj.state.motion_clahe_size = str2double(infofield(saved, 'motion_clahe_size', '64'));
+            obj.state.motion_wiener     = logical(str2double(infofield(saved, 'motion_wiener', '0')));
+            % state2info flattens the 4 x 2 by rows, so the inverse is 2 x 4 turned
+            flat = str2num(saved.motion_vertices); %#ok<ST2NM> 1 x 8
+            obj.state.motion_vertices = reshape(flat, 2, 4)';
         end
-        
-        function savecompbehavior(obj)
-            if obj.info.behavior_enable
-                disp('saving behavior')
-                mobj = obj.openmdf();
-
-                % 압축 가능한 Motion JPEG AVI로 변경
-                v1 = VideoWriter(fullfile(obj.info.mdfPath, obj.info.mdfName(1:end-4), "eye.avi"), 'Motion JPEG AVI');
-                v2 = VideoWriter(fullfile(obj.info.mdfPath, obj.info.mdfName(1:end-4), "whisker.avi"), 'Motion JPEG AVI');
-
-                % 프레임 속도 및 압축 품질 설정
-                v1.FrameRate = 33;
-                v2.FrameRate = 33;
-                v1.Quality = 95;  % 0~100 (낮을수록 더 압축됨)
-                v2.Quality = 80;
-
-                open(v1);
-                open(v2);
-
-                for idx = 1:str2double(obj.behavior.fcount)
-                    % 프레임 읽기 및 범위 변환
-                    frame = uint8(mod(double(mobj.ReadVideoFrame(idx)'), 256));
-
-                    % ROI 추출
-                    eyeframe = frame(...
-                        obj.behavior.eyevertices(1,2):obj.behavior.eyevertices(3,2), ...
-                        obj.behavior.eyevertices(1,1):obj.behavior.eyevertices(3,1));
-
-                    whiskerframe = frame(...
-                        obj.behavior.whiskervertices(1,2):obj.behavior.whiskervertices(3,2), ...
-                        obj.behavior.whiskervertices(1,1):obj.behavior.whiskervertices(3,1));
-                    % 1. 밝은 반사점 억제 + 명암도 확장 (clip 상위 1% 제거)
-                    eyeframe = imgaussfilt(eyeframe,1);
-                    high = double(prctile(eyeframe(:), 99)) / 255;  % 상위 0.5% 잘라내기
-
-                    eyeframe_adj = imadjust(eyeframe, [0, high], [0 1]);
-
-
-                    % 프레임 저장
-                    writeVideo(v1, eyeframe_adj);
-                    writeVideo(v2, whiskerframe);
-                end
-                delete(mobj);
-
-                close(v1);
-                close(v2);
-
-                disp('behavior data saved')
-            else
-                disp('behavior disabled')
-            end
-        end
-
-        function obj = updatestate(obj,parameters)
-            %UPDATESTATE  move the read window for the chunk loop - loadstart, loadend, ch2read, clamped to 1..fcount
-            arguments
-                obj
-                parameters.loadstart(1,1) {mustBeNumeric} = obj.state.loadstart
-                parameters.loadend(1,1) {mustBeNumeric}   = obj.state.loadend
-                parameters.ch2read (1,1) {mustBeNumeric}  = obj.state.ch2read
-            end
-
-            obj.state.ch2read   = parameters.ch2read;
-            obj.state.loadstart = parameters.loadstart;
-            obj.state.loadend   = parameters.loadend;
-
-            if obj.state.loadend > obj.info.fcount % beyond the last frame, read to the end
-                disp('Duration exceed total frame, loadend set to the end')
-                obj.state.loadend = obj.info.fcount;
-            end
-            if obj.state.loadstart < 1
-                disp('frame start should above 1')
-                obj.state.loadstart = 1;
-            end
-        end
-
-        function info = state2info(obj, fieldname)
-            arguments
-                obj
-                fieldname.loadstart = true
-                fieldname.loadend = true
-                fieldname.xshift = true
-                fieldname.motion_refframes = true
-                fieldname.motion_refchannel = true
-                fieldname.motion_vertices = true
-                fieldname.groupz = true
-                fieldname.motion_medfilt = true
-                fieldname.motion_clahe = true
-                fieldname.motion_clahe_size = true
-                fieldname.motion_wiener = true
-            end
-
-            % Initialize info with the existing obj.info
-            info = obj.info;
-
-            % Get all field names from fieldname structure
-            fields = fieldnames(fieldname);
-
-            % Iterate over the field names and update info if the fieldname value is true
-            for i = 1:numel(fields)
-                field = fields{i}; % Get the current field name
-                if fieldname.(field) % Check if the field is flagged as true
-                    if strcmp(field, 'motion_vertices') % Special case for motion_vertices
-                        info.(field) = strjoin(string(reshape(obj.state.motion_vertices', 1, [])));
-                    elseif strcmp(field, 'motion_medfilt') % writetable needs a scalar or a string
-                        info.(field) = strjoin(string(obj.state.motion_medfilt));
-                    elseif strcmp(field, 'motion_refframes') % first and last acquisition frame
-                        info.(field) = strjoin(string(obj.state.motion_refframes));
-                    else
-                        info.(field) = obj.state.(field); % General case
-                    end
-                end
-            end
-        end
-
-
 
         function [obj, demo] = demoload(obj, refimgchannel, option)
             %DEMOLOAD  load demoframes(loadstart, groupz) then determine pshift
@@ -209,7 +85,7 @@ classdef mdf_xymovie < mdf
         end
 
         function [obj, demo] = demomotion(obj, demo, option)
-            %DEMOMOTION  demoprepare - draw box - estimate drift - apply - check, loop until accepted
+            %DEMOMOTION  demoprepare - draw box - estimate - apply - check, until accepted
             arguments
                 obj
                 demo
@@ -223,13 +99,10 @@ classdef mdf_xymovie < mdf
             obj.state.motion_clahe_size = option.motion_clahe_size;
             obj.state.motion_wiener     = option.motion_wiener;
 
-            [demo.processed, obj.state.xpadstart, obj.state.xpadend] = mdf_xymovie.demoprepare( ...
-                demo.raw, obj.state.xshift, obj.state.groupz, obj.state.motion_medfilt, ...
-                obj.state.motion_clahe, obj.state.motion_clahe_size, obj.state.motion_wiener);
+            [demo.processed, obj.state.xpadstart, obj.state.xpadend] = obj.demoprepare(demo.raw);
 
-            % demo.frames is the list demoload read, so the slice a person picks is
-            % written down as the acquisition frames it averaged rather than as an
-            % index into a stack that only exists inside this call
+            % the slice picked is written down as acquisition frames, not as an index
+            % into a stack that only exists inside this call
             qualitycontrol = false;
             while qualitycontrol == false
                 [obj.state.motion_vertices, ref_slice] = mdf_rectangle_polygon(demo.processed, 'rectangle');
@@ -237,258 +110,156 @@ classdef mdf_xymovie < mdf
                 obj.state.motion_refframes = [demo.frames(block(1)), demo.frames(block(end))];   % 1 x 2 frame
                 obj.state.motion_refimg = demo.processed(:,:,ref_slice);
                 demo.drift_table = pre_estimatemotion(demo.processed, obj.state.motion_refimg, obj.state.motion_vertices);
-                [demo.correctedstack, demo.ip_Drifttable] = pre_applymotion(demo.processed, demo.drift_table);
+                demo.correctedstack = pre_applymotion(demo.processed, demo.drift_table);
                 qualitycontrol = mdf.checkstack(demo.correctedstack);
             end
         end
 
+        function drifttable = getdrifttable(obj)
+            %GETDRIFTTABLE  group average - motionpreprocess - estimate, into this read's columns
+            %
+            % OUT  drifttable  4 x n double   obj.drifttable with the columns this read reaches
+            %                                 written in; an edge column is measured again by
+            %                                 the neighbouring read, to the same value
+            [own_start, own_stop, read_start, ~] = obj.readwindow();
+            [~, col_idx] = obj.tablecolumns(own_start, own_stop);
+            averaged = pre_groupaverage(obj.stack, obj.state.groupz);
+            averaged = mdf_motionpreprocess(averaged, obj.state.motion_medfilt, ...
+                obj.state.motion_clahe, obj.state.motion_clahe_size, obj.state.motion_wiener);
+            read_col1 = (read_start - obj.state.loadstart) / obj.state.groupz + 1;
+            read_drift = pre_estimatemotion(averaged(:, :, col_idx - read_col1 + 1), ...
+                obj.state.motion_refimg, obj.state.motion_vertices);
+            drifttable = obj.drifttable;
+            drifttable(:, col_idx) = read_drift;
+        end
+
+        function stack = correctdrift(obj)
+            %CORRECTDRIFT  the table interpolated onto this read's own frames, each translated
+            %
+            % OUT  stack  H x W x n   the own frames only, full rate, same class; -2048 where
+            %                         the shift moved nothing in
+            [own_start, own_stop, read_start, ~] = obj.readwindow();
+            [frame_pos, col_idx] = obj.tablecolumns(own_start, own_stop);
+            shift_row = interp1(col_idx, obj.drifttable(3, col_idx), frame_pos, 'linear');
+            shift_col = interp1(col_idx, obj.drifttable(4, col_idx), frame_pos, 'linear');
+            offset = own_start - read_start;
+            n_own  = own_stop - own_start + 1;
+            stack  = zeros(size(obj.stack, 1), size(obj.stack, 2), n_own, 'like', obj.stack);
+            for k = 1:n_own
+                stack(:, :, k) = imtranslate(obj.stack(:, :, offset + k), ...
+                    [round(shift_col(k)), round(shift_row(k))], 'FillValues', -2048);
+            end
+        end
+
+        function stack = afterprocess(obj)
+            %AFTERPROCESS  groupz frames into one page
+            stack = pre_groupaverage(obj.stack, obj.state.groupz);
+        end
+        
+
+        function savemotion(obj)
+            %SAVEMOTION  write dft_registration's four rows in its order
+            % were labelled yerror / xerror / ymotion / xmotion; see CLAUDE_LOG.md
+            info.driftestimation_fps = num2str(obj.info.fps / obj.state.groupz);   % char, as written
+            motion_rows.regerror  = obj.drifttable(1,:);   % sqrt(1-|CCmax|^2/(E1*E2)), 0 = identical
+            motion_rows.diffphase = obj.drifttable(2,:);   % angle(CCmax), 0 for real images
+            motion_rows.rowshift  = obj.drifttable(3,:);   % the correction, not the tissue's motion
+            motion_rows.colshift  = obj.drifttable(4,:);
+            motion_path = fullfile(obj.state.save_folder, [obj.info.mdfName(1:end-4), '_motion.txt']);
+            io_1d2txt(motion_path, '--- Motion info ---', info, '--- Motion table ---', motion_rows);
+        end
         function obj = restore(obj)
-            %RESTORE  The demoload/demomotion state back from the _info.txt.
+            %RESTORE  The demoload/demomotion state back from the _info.txt, and the reference image with it
             info_path = fullfile(obj.state.save_folder, [obj.info.mdfName(1:end-4), '_info.txt']);
-            saved     = fileread(info_path);
+            saved     = io_loadinfo(info_path);
+            obj       = obj.info2state(saved);
 
-            state = obj.state;
-            state.groupz       = str2double(infofield(saved, 'groupz'));
-            % the four below entered state after most of the tree was extracted, so
-            % an older _info.txt has no row for them; the default is what that
-            % extraction actually ran with. Everything else must be in the file
-            state.motion_medfilt = str2num(infofield(saved, 'motion_medfilt', '3 3 5')); %#ok<ST2NM> 1 x 3
-            state.motion_refchannel   = str2double(infofield(saved, 'motion_refchannel'));
-            state.ch2read      = state.motion_refchannel;
-            state.motion_refframes    = str2num(infofield(saved, 'motion_refframes')); %#ok<ST2NM> 1 x 2
-            state.xshift       = str2double(infofield(saved, 'xshift'));
-            state.motion_clahe        = logical(str2double(infofield(saved, 'motion_clahe', '0')));
-            state.motion_clahe_size   = str2double(infofield(saved, 'motion_clahe_size', '64'));
-            state.motion_wiener       = logical(str2double(infofield(saved, 'motion_wiener', '0')));
-            % state2info flattens the 4 x 2 by rows, so the inverse is 2 x 4 turned
-            flat = str2num(infofield(saved, 'motion_vertices')); %#ok<ST2NM> 1 x 8
-            state.motion_vertices = reshape(flat, 2, 4)';
-
-            frames = obj.demoframes(1, state.groupz);
-            at     = find(frames == state.motion_refframes(1), 1);
-            if isempty(at) || mod(at - 1, state.groupz) ~= 0 || frames(at + state.groupz - 1) ~= state.motion_refframes(2)
+            frames = obj.demoframes(1, obj.state.groupz);
+            at     = find(frames == obj.state.motion_refframes(1), 1);
+            if isempty(at) || mod(at - 1, obj.state.groupz) ~= 0 || ...
+                    frames(at + obj.state.groupz - 1) ~= obj.state.motion_refframes(2)
                 error('mdf_xymovie:restore', ...
                     'frame %d does not start a group of %d in the rebuilt demo list, so the reference cannot be located', ...
-                    state.motion_refframes(1), state.groupz);
+                    obj.state.motion_refframes(1), obj.state.groupz);
             end
-            ref_slice = (at - 1) / state.groupz + 1;
+            ref_slice = (at - 1) / obj.state.groupz + 1;
 
             mobj = obj.openmdf();
-            demo_stack = mdf_readframes(mobj, state.motion_refchannel, frames);
+            demo_stack = mdf_readframes(mobj, obj.state.motion_refchannel, frames);
             delete(mobj);
-            [demo_stack, state.xpadstart, state.xpadend] = mdf_xymovie.demoprepare( ...
-                demo_stack, state.xshift, state.groupz, state.motion_medfilt, ...
-                state.motion_clahe, state.motion_clahe_size, state.motion_wiener);
-            state.motion_refimg = demo_stack(:, :, ref_slice);
+            [demo_stack, obj.state.xpadstart, obj.state.xpadend] = obj.demoprepare(demo_stack);
+            obj.state.motion_refimg = demo_stack(:, :, ref_slice);
             fprintf('restored from %s : xpad %d-%d, refimg %d x %d, reference frames %d-%d\n', ...
-                info_path, state.xpadstart, state.xpadend, size(state.motion_refimg, 1), ...
-                size(state.motion_refimg, 2), state.motion_refframes(1), state.motion_refframes(2));
-            obj.state = state;
+                info_path, obj.state.xpadstart, obj.state.xpadend, size(obj.state.motion_refimg, 1), ...
+                size(obj.state.motion_refimg, 2), obj.state.motion_refframes(1), obj.state.motion_refframes(2));
         end
-
-        function estimated_drifttable = getdrifttable(obj)
-            % Preprcocessing (Padding removal -> post pixel shift correction -> Trim -> Non Negative -> group average -> medfilt3)
-            % group averaging
-            disp('group averaging')
-            zstack = pre_groupaverage(obj.stack, obj.state.groupz); % denoise by group averaging
-            % median filter, state.motion_medfilt
-            disp('3D median filtering')
-            zstack = medfilt3(zstack,obj.state.motion_medfilt); % denoise by 3d median filter
-            estimated_drifttable = pre_estimatemotion(zstack,obj.state.motion_refimg,obj.state.motion_vertices);
-            % the whole table at once; pre_estimatemotion drew one per call
-            figure('name', 'Pixel Shift', 'NumberTitle', 'off');
-            subplot(2, 1, 1);
-            plot(estimated_drifttable(4, :));
-            title('X shift');
-            subplot(2, 1, 2);
-            plot(estimated_drifttable(3, :));
-            title('Y shift');
-            driftfilename = fullfile(obj.state.save_folder, [obj.info.mdfName(1:end-4),'_motion.txt']);
-            mdf_xymovie.savemotion(estimated_drifttable,obj.info.fps/obj.state.groupz,driftfilename)
-        end
-
-        function [zstack, applied_drifttable] = correctdrift(obj)
-            [zstack, applied_drifttable] = pre_applymotion(obj.stack,obj.drifttable);
-
-        end
-
-        function zstack = afterprocess(obj,option)
-            arguments
-                obj
-                option.thresholding = false
-            end
-            % Group averaging
-            zstack = pre_groupaverage(obj.stack,obj.state.groupz);
-            % Thresholding
-            if option.thresholding
-                zstack = pre_thresholding(zstack,cutoff=1,cutting_size=4);
-            end
-        end
-
 
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     end % end of method
 
     methods (Access=protected)
         function frames = demoframes(obj, loadstart, groupz)
-            %DEMOFRAMES  round(linspace(loadstart, fcount-groupz+1, fcount*0.05/groupz)) grown to whole groupz blocks
+            %DEMOFRAMES  ~5% of the frames as whole groupz blocks, starts spread by linspace
             total_frames = obj.info.fcount - loadstart + 1;
             n_chunks     = max(5, round(total_frames * 0.05 / groupz));
             chunk_starts = unique(round(linspace(loadstart, ...
                                obj.info.fcount - groupz + 1, n_chunks)));
             frames = reshape((chunk_starts(:) + (0:groupz-1))', 1, []);
         end
-    end
 
-    methods (Access=protected, Static)
-        function [stack, xpadstart, xpadend] = demoprepare(stack, xshift, groupz, medfilt_size, clahe, clahe_size, wiener)
-            %DEMOPREPARE  pshift - findpadding (reads the -2048 fill) - crop - group average - medfilt3 - preprocstack
-            stack = mdf_pshiftcorrection(stack, xshift);
+        function [stack, xpadstart, xpadend] = demoprepare(obj, stack)
+            %DEMOPREPARE  pshift - findpadding (-2048 fill) - crop - group average - motionpreprocess
+            %   Caller: mdf_xymovie.demomotion, mdf_xymovie.restore
+            stack = mdf_pshiftcorrection(stack, obj.state.xshift);
             [xpadstart, xpadend] = mdf.findpadding(stack);
-            stack = pre_groupaverage(stack(:, xpadstart:xpadend, :), groupz);
-            stack = medfilt3(stack, medfilt_size);
-            stack = mdf_xymovie.preprocstack(stack, clahe, clahe_size, wiener);
+            stack = pre_groupaverage(stack(:, xpadstart:xpadend, :), obj.state.groupz);
+            stack = mdf_motionpreprocess(stack, obj.state.motion_medfilt, obj.state.motion_clahe, ...
+                obj.state.motion_clahe_size, obj.state.motion_wiener);
         end
 
-        function behavior = behaviorinfo(mobj)
-            behavior.fwidth  = mobj.ReadParameter('Video Width');
-            behavior.fheight = mobj.ReadParameter('Video Height');
-            if strcmp(mobj.ReadParameter('Video Mode'),'0')
-                behavior.videomode = 'mono_8bit';
-            else
-                behavior.videomode = mobj.ReadParameter('Video Mode');
-            end
-            behavior.fcount = mobj.ReadParameter('Video Image Count');
-            behavior.frate = mobj.ReadParameter('Video Rate');
-            behavior.democount = 2000;
-            sampleFrame = mobj.ReadVideoFrame(1)';
-            [height, width] = size(sampleFrame);
-            demostack = zeros(height,width, behavior.democount);%, 'like', sampleFrame);
-            for idx = 1:behavior.democount
-                demostack(:,:,idx) = mobj.ReadVideoFrame(idx)';
-            end
-            demostack = mod(demostack,256);
-            disp('select eye vertices')
-            [behavior.eyevertices, ~] = mdf_rectangle_polygon(demostack,'rectangle');
-            disp('select whisker and nose vertices')
-            [behavior.whiskervertices, ~] = mdf_rectangle_polygon(demostack,'rectangle');
-            figure("Name",'behavior demo')
-            sliceViewer(demostack)
+        function [own_start, own_stop, read_start, read_stop] = readwindow(obj)
+            %READWINDOW  the parent's own span, loaded with one group more each side than medfilt3 reaches
+            %   medfilt3 reaches floor(z/2) pages either way and the interpolation reads one
+            %   page beyond, so the load carries one more group than that on both sides.
+            [own_start, own_stop] = readwindow@mdf(obj);
+            overlap    = (floor(obj.state.motion_medfilt(3) / 2) + 1) * obj.state.groupz;
+            read_start = max(obj.state.loadstart, own_start - overlap);
+            read_stop  = min(obj.state.loadend,   own_stop  + overlap);
         end
 
-        function saveanalog(analog, filename)
-            analogdata = analog.data;
-            analoginfo = analog.info;
-            fileID = fopen(filename, 'w');
-
-            % Header start
-            fprintf(fileID, '--- Analog Info ---\n');
-            % Write the struct fields and their values
-            fieldNames = fieldnames(analoginfo); % Get the field names
-            for i = 1:numel(fieldNames)
-                fieldName = fieldNames{i};
-                fieldValue = analoginfo.(fieldName);
-                % Convert arrays/matrices to a string for writing
-                if isnumeric(fieldValue)
-                    fieldValueStr = mat2str(fieldValue); % Converts numbers to string
-                elseif ischar(fieldValue)
-                    fieldValueStr = fieldValue; % Keep strings as-is
-                end
-                % Write the field name and value to the file
-                fprintf(fileID, '%s: %s\n', fieldName, fieldValueStr);
-            end
-            % end of header
-            fprintf(fileID, '\n--- Analog Data ---\n');
-            % Write the data row by row (field names as row names)
-            channelNames = fieldnames(analogdata); % Field names are row names
-            for i = 1:numel(channelNames)
-                rowName = channelNames{i}; % Get the row name (field name)
-                rowData = analogdata.(rowName); % Get the corresponding data
-                rowData = mat2str(rowData); % Convert to a string
-                % Write the row name and its data
-                fprintf(fileID, '%s: %s\n', rowName, rowData);
-            end
-            % Close the file
-            fclose(fileID);
+        function [unit, page_keys, page_step] = pageaxis(obj)
+            %PAGEAXIS  an XY Movie's page axis is time: one page is groupz frames
+            unit      = ["um" "um" "sec"];
+            page_keys = ["frames" "finterval"];
+            page_step = obj.state.groupz / obj.info.fps;
         end
 
-    end % end of method
-
-    methods (Static)
-        function stack = preprocstack(stack, clahe, clahe_size, wiener)
-            %PREPROCSTACK  CLAHE and the Wiener low-pass over a stack, frame by frame.
-            %   demoprepare and mdf_streamextract both run it, so refimg and the
-            %   frames it is correlated against carry the same convention. It only
-            %   feeds the drift estimate -- the shifts are applied to the raw stack,
-            %   so nothing filtered here ever reaches a stored pixel.
-            %
-            %   The WHOLE frame, not the motion box. CLAHE tiles whatever region it
-            %   is handed, so a box and a frame disagree inside the box; a local
-            %   median filter does not, which is why medfilt3 may run on the box.
-            %
-            %   adapthisteq needs 0~1 and the scale is the signed 12-bit range,
-            %   fixed. A per-frame min and max would make one chunk's normalisation
-            %   depend on that chunk's content. PIVlab's other stages are pinned
-            %   off: imadjust neutral at 0 and 1, no high-pass, no intensity cap.
-            %
-            % IN   stack       H x W x T numeric
-            %      clahe       1 x 1 logical
-            %      clahe_size  1 x 1 double px   CLAHE tile side
-            %      wiener      1 x 1 logical     wiener2 AND the low-pass after it
-            % OUT  stack       same size, 0~1 double when either filter ran
-            if ~clahe && ~wiener
-                return
-            end
-            out = zeros(size(stack));
-            for frame_idx = 1:size(stack, 3)
-                scaled = (double(stack(:,:,frame_idx)) + 2048) / 4096;
-                out(:,:,frame_idx) = mdf_preprocframe(scaled, [], ...
-                    clahe, clahe_size, false, 15, false, wiener, 3, 0, 1);
-            end
-            stack = out;
+        function [frame_pos, col_idx] = tablecolumns(obj, own_start, own_stop)
+            %TABLECOLUMNS  where own frames sit on the drift table, and the columns that reaches
+            %   pre_applymotion's linspace: the step is (n_page-1)/(n_total-1), not 1/groupz;
+            %   see CLAUDE_LOG.md 2026-08-30 linspace 의 걸음
+            n_total = obj.state.loadend - obj.state.loadstart + 1;
+            n_page  = n_total / obj.state.groupz;
+            table_step = (n_page - 1) / (n_total - 1);
+            frame_pos  = 1 + ((own_start:own_stop) - obj.state.loadstart) * table_step;
+            col_idx    = max(1, floor(frame_pos(1))) : min(n_page, ceil(frame_pos(end)));
         end
 
-        function savemotion(motiontable,motionfps,filename)
-            %SAVEMOTION  write dft_registration's four rows in its order. public so a chunked caller builds the table first
-            % were labelled yerror / xerror / ymotion / xmotion; see CLAUDE_LOG.md
-            regerror  = mat2str(motiontable(1,:));   % sqrt(1 - |CCmax|^2/(E1*E2)), 0 = identical
-            diffphase = mat2str(motiontable(2,:));   % angle(CCmax), 0 for real images
-            rowshift  = mat2str(motiontable(3,:));   % the correction, not the tissue's motion
-            colshift  = mat2str(motiontable(4,:));
-
-            fileID = fopen(filename,'w');
-            fprintf(fileID, '--- Motion info ---\n');
-            fprintf(fileID, 'driftestimation_fps: %s\n', num2str(motionfps));
-            fprintf(fileID, '--- Motion table ---\n');
-            fprintf(fileID, '%s: %s\n', 'regerror', regerror);
-            fprintf(fileID, '%s: %s\n', 'diffphase', diffphase);
-            fprintf(fileID, '%s: %s\n', 'rowshift', rowshift);
-            fprintf(fileID, '%s: %s\n', 'colshift', colshift);
-            fclose(fileID);
-
-        end
     end
+
 end
 
 function value = infofield(saved, key, default)
-%INFOFIELD  One Field,Value row out of the text saveinfo wrote.
-%   readtable turns the row this needs into <missing>, so the file is read as
-%   text. The Comments field is quoted and spans lines, hence the anchors.
+%INFOFIELD  One field of the loaded info, or the default when the file predates the key.
 %
-% IN   saved    1 x n char     the whole file
-%      key      1 x n char     the Field to return
-%      default  1 x n char     what an absent key means, as text the caller
-%                              converts the same way; omit to make absence an
-%                              error, which is right for anything measured
+% IN   saved    1 x 1 struct   from io_loadinfo
+%      key      1 x n char     the field to return
+%      default  1 x n char     what an absent key means, as text the caller converts
 % OUT  value    1 x n char
-    hit = regexp(saved, ['^', key, ',(.*)'], 'tokens', 'once', ...
-        'lineanchors', 'dotexceptnewline');
-    if isempty(hit)
-        if nargin >= 3
-            value = default;
-            return
-        end
-        error('mdf_xymovie:infofield', '%s carries no %s', 'the info file', key);
+    if isfield(saved, key)
+        value = saved.(key);
+    else
+        value = default;
     end
-    value = strtrim(hit{1});
 end
+
