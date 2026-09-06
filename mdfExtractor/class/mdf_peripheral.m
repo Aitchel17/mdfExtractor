@@ -29,7 +29,7 @@ classdef mdf_peripheral < mdf
 
         function saveanalog(obj)
             %SAVEANALOG  obj.analog as <name>_analog.txt
-            analog_path = fullfile(obj.state.save_folder, [obj.info.mdfName(1:end-4), '_analog.txt']);
+            analog_path = fullfile(obj.initdir(), [obj.info.mdfName(1:end-4), '_analog.txt']);
             io_1d2txt(analog_path, '--- Analog Info ---', obj.analog.info, ...
                 [newline '--- Analog Data ---'], obj.analog.data);
         end
@@ -51,10 +51,11 @@ classdef mdf_peripheral < mdf
         function obj = openavi(obj)
             %OPENAVI  the control and the two writers the frame loop needs, held until closeavi
             obj.state.mobj = obj.openmdf();
-            obj.state.eye = VideoWriter(fullfile(obj.state.save_folder, 'eye.avi'), 'Motion JPEG AVI');
+            folder = obj.initdir();
+            obj.state.eye = VideoWriter(fullfile(folder, 'eye.avi'), 'Motion JPEG AVI');
             obj.state.eye.FrameRate = 33;
             obj.state.eye.Quality = 95;         % 0~100, lower is smaller
-            obj.state.whisker = VideoWriter(fullfile(obj.state.save_folder, 'whisker.avi'), 'Motion JPEG AVI');
+            obj.state.whisker = VideoWriter(fullfile(folder, 'whisker.avi'), 'Motion JPEG AVI');
             obj.state.whisker.FrameRate = 33;
             obj.state.whisker.Quality = 80;
             open(obj.state.eye);

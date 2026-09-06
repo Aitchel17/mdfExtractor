@@ -33,11 +33,8 @@ classdef mdf
             end
             obj.info.mdfName = mdfName;
             obj.info.mdfPath = mdfPath;
-            % Saving folder path
+            % where products go; initdir makes it, at the first write
             obj.state.save_folder = fullfile(obj.info.mdfPath, obj.info.mdfName(1:end-4));
-            if ~exist(obj.state.save_folder, 'dir')
-                mkdir(obj.state.save_folder);
-            end
         end
 
         function obj = init(obj, objective, wavelength)
@@ -110,7 +107,8 @@ classdef mdf
 
         function obj = opentiff(obj)
             %OPENTIFF  the writer savetiff appends to, held until closetiff; named by tiffname
-            obj.state.tiff = Tiff(fullfile(obj.state.save_folder, obj.tiffname()), 'w8');
+            tif_path = fullfile(obj.initdir(), obj.tiffname());
+            obj.state.tiff = Tiff(tif_path, 'w8');
         end
 
         function stack = loadframes(obj)
@@ -166,13 +164,25 @@ classdef mdf
             table_info = table(infoFields, infoValues, 'VariableNames', {'Field', 'Value'});
 
             % Construct full file path
-            save_infopath = fullfile(obj.state.save_folder, [saveinfo.mdfName(1:end-4),'_info.txt']);
+            save_infopath = fullfile(obj.initdir(), [saveinfo.mdfName(1:end-4),'_info.txt']);
             % Write the table to an Excel file (overwrite the file initially)
             writetable(table_info, save_infopath);
         end
     end
 
     methods (Access=protected)
+        function folder = initdir(obj)
+            %INITDIR  the products folder, made if it is not there yet; a constructor writes nothing
+            %   Caller: mdf.opentiff, mdf.saveinfo, mdf_xymovie.savemotion, mdf_zstack.savemotion,
+            %           mdf_peripheral.saveanalog, mdf_peripheral.openavi
+            %
+            % OUT  folder  1 x n char   obj.state.save_folder
+            folder = obj.state.save_folder;
+            if ~exist(folder, 'dir')
+                mkdir(folder);
+            end
+        end
+
         function mobj = openmdf(obj)
             % return mobj, connected with .mdf by ActiveX
             mobj = actxserver('MCSX.Data');

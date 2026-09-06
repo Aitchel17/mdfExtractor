@@ -155,7 +155,7 @@ classdef mdf_xymovie < mdf
             motion_rows.diffphase = obj.drifttable(2,:);   % angle(CCmax), 0 for real images
             motion_rows.rowshift  = obj.drifttable(3,:);   % the correction, not the tissue's motion
             motion_rows.colshift  = obj.drifttable(4,:);
-            motion_path = fullfile(obj.state.save_folder, [obj.info.mdfName(1:end-4), '_motion.txt']);
+            motion_path = fullfile(obj.initdir(), [obj.info.mdfName(1:end-4), '_motion.txt']);
             io_1d2txt(motion_path, '--- Motion info ---', info, '--- Motion table ---', motion_rows);
         end
         function obj = restore(obj)
