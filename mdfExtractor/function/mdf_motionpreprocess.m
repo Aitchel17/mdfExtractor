@@ -1,6 +1,6 @@
 function stack = mdf_motionpreprocess(stack, medfilt, clahe, clahe_size, wiener)
 %MDF_MOTIONPREPROCESS  medfilt3 - normalize - clahe - wiener low-pass, frame by frame
-%   Caller: mdf_xymovie.getdrifttable, mdf_xymovie.demoprepare
+%   Caller: mdf_xymovie.getdrifttable, mdf_xymovie.demoprepare, mdf_zstack.getdrifttable
 %
 % IN   stack       H x W x T numeric
 %      medfilt     1 x 3 double px  medfilt3 window [xy xy z]

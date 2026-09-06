@@ -109,10 +109,8 @@ classdef mdf
         end
 
         function obj = opentiff(obj)
-            %OPENTIFF  the writer savetiff appends to, held until closetiff: <name>_ch<ch2read>.tif
-            tif_path = fullfile(obj.state.save_folder, ...
-                sprintf('%s_ch%d.tif', obj.info.mdfName(1:end-4), obj.state.ch2read));
-            obj.state.tiff = Tiff(tif_path, 'w8');
+            %OPENTIFF  the writer savetiff appends to, held until closetiff; named by tiffname
+            obj.state.tiff = Tiff(fullfile(obj.state.save_folder, obj.tiffname()), 'w8');
         end
 
         function stack = loadframes(obj)
@@ -137,8 +135,8 @@ classdef mdf
             n_own      = size(obj.stack, 3);
             tags = obj.label_tiftag(n_page, [size(obj.stack, 1), size(obj.stack, 2)]);
             for k = 1:n_own
-                writepage(obj.state.tiff, tags, first_page + k - 1, ...
-                    touint16(obj.stack(:, :, k)));
+                mdf.writepage(obj.state.tiff, tags, first_page + k - 1, ...
+                    mdf.touint16(obj.stack(:, :, k)));
             end
             fprintf('%s ch%d: pages %d-%d of %d\n', obj.info.mdfName(1:end-4), ...
                 obj.state.ch2read, first_page, first_page + n_own - 1, n_page);
@@ -203,21 +201,33 @@ classdef mdf
             obj.state.groupz    = 1;               % no frame averaging
         end
 
-        function tags = label_tiftag(obj, n_page, frame_size)
+        function tags = label_tiftag(obj, n_page, frame_size, n_channel)
             %LABEL_TIFTAG  a page's tags: the xy scale off objpix, the page axis off the child's pageaxis
-            %   Caller: mdf.savetiff
+            %   Caller: mdf.savetiff, mdf_zstack.savetiff
             %
-            % IN   n_page      1 x 1 double   pages the file will hold
+            % IN   n_page      1 x 1 double   pages along the page axis
             %      frame_size  1 x 2 double   [height width] of one page
+            %      n_channel   1 x 1 double   channels interleaved per page (default 1)
             % OUT  tags        1 x 1 struct   for Tiff.setTag
+            arguments
+                obj
+                n_page     (1,1) {mustBeNumeric}
+                frame_size (1,2) {mustBeNumeric}
+                n_channel  (1,1) {mustBeNumeric} = 1
+            end
             [unit, page_keys, page_step] = obj.pageaxis();
             xy_step = util_unit2double(obj.info.objpix);       % um per pixel
             pixel_density = [10000 / xy_step, 10000 / xy_step];   % pixels per cm
-            description = imagejblock(n_page, 1, unit, page_keys, page_step);
+            description = imagejblock(n_page, n_channel, unit, page_keys, page_step);
             tags = tiftag(description, pixel_density, Tiff.ResolutionUnit.Centimeter);
             tags.ImageLength = frame_size(1);
             tags.ImageWidth = frame_size(2);
             tags.RowsPerStrip = frame_size(1);
+        end
+
+        function name = tiffname(obj)
+            %TIFFNAME  what savetiff's file is called: one file per channel unless a child says otherwise
+            name = sprintf('%s_ch%d.tif', obj.info.mdfName(1:end-4), obj.state.ch2read);
         end
 
         function [unit, page_keys, page_step] = pageaxis(obj) %#ok<STOUT>
@@ -227,6 +237,39 @@ classdef mdf
     end
 
     methods (Access=protected, Static)
+        function writepage(handle, tags, page, frame)
+            %WRITEPAGE  one page onto an open TIFF
+            %
+            % IN   handle  1 x 1 Tiff      open for writing
+            %      tags    1 x 1 struct    set on every page, size included
+            %      page    1 x 1 double    which page of the FILE this is, 1-based
+            %      frame   H x W uint16
+            %
+            %   The directory goes in FRONT of every page but the first, so nothing needs to
+            %   know how many pages are coming and the file ends without a trailing empty one.
+            if page > 1
+                handle.writeDirectory();
+            end
+            handle.setTag(tags);
+            handle.write(frame);
+        end
+
+        function frame = touint16(frame)
+            %TOUINT16  a frame as MCSX gives it, in the container a TIFF page takes
+            %
+            % IN   frame  H x W numeric   signed 12-bit, or a mean of it; uint16 passes through
+            % OUT  frame  H x W uint16
+            %
+            %   +2048 makes signed 12-bit unsigned and 4 bits of the container are left over,
+            %   which is what carries the fraction a groupz-frame mean has.
+            if isa(frame, 'uint16')
+                return
+            end
+            frame = double(frame);
+            frame = (frame + 2048) / 4096 * 65535;
+            frame = uint16(frame);
+        end
+
         function [start_x,end_x] = findpadding(frames)
             %% find padding caused by sinusoidal correction
             mean_x = mean(frames,[1,3]); % calculate mean value of y, z axis (y,x,z)
@@ -332,6 +375,9 @@ function description = imagejblock(n_frame, n_channel, unit, page_keys, page_ste
                    sprintf('yunit=%s\n', unit(2)), ...
                    sprintf('zunit=%s\n', unit(3)), ...
                    sprintf('%s=%g\n', page_keys(2), page_step)];
+    if n_channel > 1
+        description = [description, sprintf('hyperstack=true\n')];   % ImageJ opens channels x pages as one
+    end
 end
 
 function tags = tiftag(description, pixel_density, resolution_unit)
@@ -356,35 +402,3 @@ function tags = tiftag(description, pixel_density, resolution_unit)
     tags.Software = 'MATLAB';
 end
 
-function writepage(handle, tags, page, frame)
-    %WRITEPAGE  one page onto an open TIFF
-    %
-    % IN   handle  1 x 1 Tiff      open for writing
-    %      tags    1 x 1 struct    set on every page, size included
-    %      page    1 x 1 double    which page of the FILE this is, 1-based
-    %      frame   H x W uint16
-    %
-    %   The directory goes in FRONT of every page but the first, so nothing needs to
-    %   know how many pages are coming and the file ends without a trailing empty one.
-    if page > 1
-        handle.writeDirectory();
-    end
-    handle.setTag(tags);
-    handle.write(frame);
-end
-
-function frame = touint16(frame)
-    %TOUINT16  a frame as MCSX gives it, in the container a TIFF page takes
-    %
-    % IN   frame  H x W numeric   signed 12-bit, or a mean of it; uint16 passes through
-    % OUT  frame  H x W uint16
-    %
-    %   +2048 makes signed 12-bit unsigned and 4 bits of the container are left over,
-    %   which is what carries the fraction a groupz-frame mean has.
-    if isa(frame, 'uint16')
-        return
-    end
-    frame = double(frame);
-    frame = (frame + 2048) / 4096 * 65535;
-    frame = uint16(frame);
-end
