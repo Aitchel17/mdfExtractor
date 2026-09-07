@@ -387,6 +387,7 @@ function description = imagejblock(n_frame, n_channel, unit, page_keys, page_ste
                    sprintf('%s=%g\n', page_keys(2), page_step)];
     if n_channel > 1
         description = [description, sprintf('hyperstack=true\n')];   % ImageJ opens channels x pages as one
+        description = [description, sprintf('mode=composite\n')];    % and in colour, not one grey channel at a time
     end
 end
 
